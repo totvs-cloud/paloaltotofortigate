@@ -9,13 +9,15 @@ python3 fwaudit.py offline --snapshot /dados/migracao/snapshot_v1.xml --out out/
 # Fase B1 — baseline operacional do PA (evidências "antes", aba 09 do Plano)
 python3 fwaudit.py pa-baseline --host 172.18.252.23 --key-env PA_TECE1_FW01_KEY --influx --out out/
 
-# Fase B2 — dump read-only do FortiGate (paginado, com throttle)
-python3 fwaudit.py fg-snapshot --host 172.18.252.43 --token-env FG_TECE1_FW05_TOKEN --vdoms root,vsys2 --out out/
-#   sem token de API? login por sessão (senha SEMPRE via env, ex.: read -s):
-python3 fwaudit.py fg-snapshot --host 172.18.252.43 --user admin --pass-env FG_PASS --vdoms root,vsys2 --out out/
+# Fase B2 — dump read-only dos 2 clusters FG (paginado, com throttle; VIP = nó ativo)
+python3 fwaudit.py fg-snapshot --host 172.18.252.144 --user max.ferreira --pass-env FG_TECE1_PASS --hostname FGT-TECE1-INFRABASE --vdoms root --out out/
+python3 fwaudit.py fg-snapshot --host 172.18.252.142 --user max.ferreira --pass-env FG_TECE1_PASS --hostname FGT-TECE1-CLIENTE --vdoms root --out out/
+#   com token de API read-only (preferido): --token-env FG_TECE1_INFRABASE_TOKEN
 
 # Fase C — paridade PA↔FG → gaps.md (+ mig_audit no Influx com --influx)
-python3 fwaudit.py compare --inventory out/<ts>/inventario.json --fg-dir out/<ts>/fg-<host> --influx --out out/
+python3 fwaudit.py compare --inventory out/<ts>/inventario.json \
+    --fg vsys1=out/<ts>/fg-FGT-TECE1-INFRABASE --fg vsys2=out/<ts>/fg-FGT-TECE1-CLIENTE --influx --out out/
+#   (legado 1 FG multi-VDOM: --fg-dir out/<ts>/fg-<host>)
 
 # testes
 python3 -m unittest discover -s tests

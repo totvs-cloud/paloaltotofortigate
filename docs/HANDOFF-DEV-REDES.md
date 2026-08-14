@@ -13,10 +13,19 @@ o relatório de gaps que diz o que falta/diverge antes da janela.
 | Papel | Equipamento | Gerência |
 |---|---|---|
 | Origem (sai) | FW01TECE01 / FW02TECE01 — PA-3250, PAN-OS 10.2.9, HA a/p | 172.18.252.23 / .24 |
-| Destino (entra) | FW05TECE01-FORTINET / FW06TECE01-FORTINET — FortiGate VM, FortiOS 7.4, multi-VDOM `root`+`vsys2` | 172.18.252.43 / .44 |
+| Destino — cluster **CLIENTE** (ex-vsys2 External-Clients) | FW0101TECE01 / FW0102TECE01 — FortiGate, single-VDOM | **VIP 172.18.252.142** (nó1 .140) |
+| Destino — cluster **INFRABASE** (ex-vsys1 Infrabase) | FW0201TECE01 / FW0202TECE01 — FortiGate, single-VDOM | **VIP 172.18.252.144** (nó1 .145) |
 
+⚠️ **A topologia de destino são DOIS clusters FortiGate separados** — o split de
+vsys do PA virou split físico (era o desenho "2 clusters dedicados" da aba
+PONTOS DE ATENÇÃO). Colete sempre **pelo VIP** (= nó ativo). Os IPs
+172.18.252.43/.44 (FW05/06TECE01-FORTINET) que aparecem em DNATs do PA são do
+desenho antigo — confirmar com o time se aqueles DNATs do Check_MK devem
+apontar para os novos clusters (isso muda a lista de VIPs do check A10/C02!).
+
+Credencial: admin `max.ferreira` (sessão; senha via `read -s`, NUNCA em argv).
 Janela de virada: 05/06→31/08/2026 (REDES-1639). **Licenças PA do TECE1 vencem
-20/08/2026.** vsys1=Infrabase→VDOM root; vsys2=External-Clients→VDOM vsys2.
+20/08/2026.**
 
 ## Regras invioláveis (leia antes de qualquer comando)
 
@@ -67,43 +76,50 @@ laptop: `scp -r <laptop>:~/Documents/monitoramento12/paloaltotofortigate /opt/fw
 ```bash
 python3 --version                                   # >= 3.6
 python3 -m unittest discover -s audit/tests | tail -2   # tem que terminar em OK
-ip route get 172.18.252.43
-curl -sk -o /dev/null -w '%{http_code}\n' https://172.18.252.43/api/v2/monitor/system/status
+for ip in 172.18.252.142 172.18.252.144; do
+  printf '%s: ' $ip
+  curl -sk -o /dev/null -w '%{http_code}\n' https://$ip/api/v2/monitor/system/status
+done
 ```
 
 Leitura do curl: **401 = rede OK** (falta só autenticar). `000`/timeout = sem
-rota até a gerência do FG — **pare aqui** e trate a liberação (hoje esse acesso
-é publicado via DNAT no próprio PA para o Check_MK; a coleta precisa de caminho
-direto da dev-redes). Não siga com o resto enquanto isso não resolver.
+rota até a gerência do cluster — **pare aqui** e trate a liberação. Não siga
+com o resto enquanto os DOIS VIPs não responderem.
 
-## Passo 2 — execução completa (o comando único)
+## Passo 2 — execução completa (o comando único, 2 clusters)
 
-A senha do admin do FG será pedida no prompt (sem eco — não fica em histórico
-nem em `ps`). Ajuste só o caminho do `--snapshot` (export XML do PA nesta box).
+A senha do admin será pedida no prompt (sem eco — não fica em histórico nem em
+`ps`). Ajuste só o caminho do `--snapshot` (export XML do PA nesta box).
 
 ```bash
 cd /opt/fw-migration/src \
-&& read -r -s -p "senha do admin FG: " FG_PASS && export FG_PASS && echo \
+&& read -r -s -p "senha do admin FG (max.ferreira): " FG_TECE1_PASS && export FG_TECE1_PASS && echo \
 && python3 audit/fwaudit.py offline --snapshot /dados/migracao/snapshot_v1.xml --out out/ \
-&& python3 audit/fwaudit.py fg-snapshot --host 172.18.252.43 --user admin --pass-env FG_PASS \
-      --hostname FW05TECE01-FORTINET --vdoms root,vsys2 --out out/ \
+&& python3 audit/fwaudit.py fg-snapshot --host 172.18.252.144 --user max.ferreira --pass-env FG_TECE1_PASS \
+      --hostname FGT-TECE1-INFRABASE --vdoms root --out out/ \
+&& python3 audit/fwaudit.py fg-snapshot --host 172.18.252.142 --user max.ferreira --pass-env FG_TECE1_PASS \
+      --hostname FGT-TECE1-CLIENTE --vdoms root --out out/ \
 && INV=$(ls -t out/*/inventario.json | head -1) \
-&& FGD=$(ls -td out/*/fg-FW05TECE01-FORTINET | head -1) \
-&& python3 audit/fwaudit.py compare --inventory "$INV" --fg-dir "$FGD" --out out/ \
-&& unset FG_PASS \
+&& FGI=$(ls -td out/*/fg-FGT-TECE1-INFRABASE | head -1) \
+&& FGC=$(ls -td out/*/fg-FGT-TECE1-CLIENTE | head -1) \
+&& python3 audit/fwaudit.py compare --inventory "$INV" \
+      --fg vsys1="$FGI" --fg vsys2="$FGC" --out out/ \
+&& unset FG_TECE1_PASS \
 && echo "=== RELATÓRIO: $(ls -t out/*/gaps.md | head -1) ==="
 ```
 
 Notas:
-- O `fg-snapshot` faz ~40 GETs por VDOM com throttle 0,3s (2–3 min). Sessão é
-  encerrada com logout ao final.
+- **vsys1 (Infrabase) compara com o cluster INFRABASE; vsys2 (Clientes) com o
+  CLIENTE** — é o `--fg lado=diretório`. Cada cluster é vdom `root`.
+- Coleta pelo **VIP** = sempre o nó ativo. ~40 GETs por cluster com throttle
+  0,3s (2–3 min cada). Sessão encerrada com logout ao final.
 - Login recusado? Causa nº 1 é **trusthost** do admin não incluir o IP desta
   dev-redes. Causa nº 2: senha/admin bloqueado. A mensagem de erro distingue.
-- Com token de API (desenho definitivo), troque `--user admin --pass-env FG_PASS`
-  por `--token-env FG_TECE1_FW05_TOKEN`.
-- Depois, rode o mesmo `fg-snapshot`+`compare` no **FW06** (`--host 172.18.252.44
-  --hostname FW06TECE01-FORTINET`) uma vez, para confirmar que o cluster está
-  idêntico.
+- Com token de API (desenho definitivo), troque `--user/--pass-env` por
+  `--token-env FG_TECE1_INFRABASE_TOKEN` / `FG_TECE1_CLIENTE_TOKEN`.
+- Opcional: repetir o `fg-snapshot` apontando para o nó passivo de cada
+  cluster (ex.: `.140`, `.145`) uma vez, para confirmar sync — ou confiar no
+  `fg_ha.checksum_match` do fgpoller.
 
 ## Passo 3 — baseline operacional do PA (evidências "antes", aba 09 do Plano)
 
@@ -142,7 +158,8 @@ anexar esses arquivos em lugar público — contêm topologia e nomes de cliente
 1. Criar bucket `fw_migration` (org TOTVS, 90d) + token no Influx central
    `10.114.35.75:8086`; smoke test no RUNBOOK §4.
 2. `sudo fgpoller/install.sh` e preencher `/opt/fw-migration/.env` e
-   `fgpoller.conf` (FW05/FW06, vdoms root,vsys2) → `systemctl restart fgpoller`.
+   `fgpoller.conf` (já vem com os 2 clusters via VIP .142/.144, vdom root;
+   sessão com user/pass_env ou token) → `systemctl restart fgpoller`.
 3. Importar `dashboards/Migracao-PA-FG-TECE1/dashboard.json` no Grafana central
    (datasource já é o `efcqeppjazvgga`).
 4. Re-rodar o `compare` com `--influx` diariamente até a janela (Row 5 mostra o

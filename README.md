@@ -1,7 +1,8 @@
 # paloaltotofortigate — auditoria e observabilidade da migração PA → FortiGate
 
 Ferramentas da migração dos firewalls de borda Palo Alto → FortiGate (TOTVS Cloud).
-Primeiro site: **TECE1** (FW01/02TECE01 → FW05/06TECE01-FORTINET). Desenhado para ser
+Primeiro site: **TECE1** — FW01/02TECE01 (PA) → **2 clusters FortiGate**: CLIENTE
+(VIP 172.18.252.142, ex-vsys2) e INFRABASE (VIP 172.18.252.144, ex-vsys1). Desenhado para ser
 reutilizado no TESP4 trocando configuração, não código.
 
 ⛔ **Somente leitura em equipamento.** Toda consulta a firewall passa por uma trava
@@ -36,10 +37,12 @@ python3 audit/fwaudit.py offline --snapshot /dados/migracao/snapshot_v1.xml --ou
 python3 audit/fwaudit.py pa-baseline --host 172.18.252.23 --key-env PA_TECE1_FW01_KEY --out out/
 
 # Fase B — snapshot FG (read-only, paginado, com throttle)
-python3 audit/fwaudit.py fg-snapshot --host 172.18.252.43 --token-env FG_TECE1_FW05_TOKEN --vdoms root,vsys2 --out out/
+python3 audit/fwaudit.py fg-snapshot --host 172.18.252.144 --user max.ferreira --pass-env FG_TECE1_PASS --hostname FGT-TECE1-INFRABASE --vdoms root --out out/
+python3 audit/fwaudit.py fg-snapshot --host 172.18.252.142 --user max.ferreira --pass-env FG_TECE1_PASS --hostname FGT-TECE1-CLIENTE --vdoms root --out out/
 
 # Fase C — paridade PA↔FG
-python3 audit/fwaudit.py compare --inventory out/<data>/inventario.json --fg-dir out/<data>/fg --out out/
+python3 audit/fwaudit.py compare --inventory out/<data>/inventario.json \
+    --fg vsys1=out/<data>/fg-FGT-TECE1-INFRABASE --fg vsys2=out/<data>/fg-FGT-TECE1-CLIENTE --out out/
 
 # Poller FG (systemd)
 sudo fgpoller/install.sh

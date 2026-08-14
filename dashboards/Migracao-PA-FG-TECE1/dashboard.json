@@ -1,7 +1,7 @@
 {
   "uid": "migracao-pa-fg-tece1",
   "title": "Migração PA → FG — TECE1",
-  "description": "Virada FW01/02TECE01 (Palo Alto) → FW05/06TECE01-FORTINET. Espelha os critérios de aceite (aba 08) e evidências (aba 09) do Plano de Virada. PA=azul, FG=laranja em todos os painéis.",
+  "description": "Virada FW01/02TECE01 (Palo Alto) → 2 clusters FortiGate: CLIENTE (VIP 172.18.252.142, ex-vsys2) e INFRABASE (VIP 172.18.252.144, ex-vsys1), coletados pelo VIP (nó ativo). Espelha os critérios de aceite (aba 08) e evidências (aba 09) do Plano de Virada. PA=azul, FG=laranja em todos os painéis.",
   "tags": [
     "migracao",
     "palo",
@@ -242,7 +242,7 @@
       "id": 3,
       "type": "stat",
       "title": "HA FortiGate (sync/checksum)",
-      "description": "fg_ha.checksum_match: 1 = cluster com config idêntica. Cluster novo é onde a migração quebra.",
+      "description": "fg_ha.checksum_match por cluster: 1 = par com config idêntica. São 2 clusters (CLIENTE e INFRABASE) — os dois precisam estar verdes.",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"
@@ -308,7 +308,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "Sessões ativas — PA × FG (o X da virada)",
-      "description": "Critério 'Tráfego' da aba 08 do Plano de Virada: as curvas se cruzando mostram o tráfego migrando do PA para o FG.",
+      "description": "Critério 'Tráfego' da aba 08: as curvas se cruzando mostram o tráfego migrando do PA para os 2 clusters FG (uma série laranja por cluster).",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"
@@ -641,7 +641,7 @@
       "id": 9,
       "type": "stat",
       "title": "Túneis UP — FG",
-      "description": "fg_vpn_summary.tunnels_up somado nos VDOMs. Verde quando alcança o baseline de 57.",
+      "description": "fg_vpn_summary.tunnels_up somado nos 2 clusters (CLIENTE+INFRABASE, via VIP = nó ativo, sem dupla contagem). Verde quando alcança o baseline de 57.",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"

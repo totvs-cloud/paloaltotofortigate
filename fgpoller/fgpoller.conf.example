@@ -1,5 +1,10 @@
 # fgpoller — copie para /opt/fw-migration/fgpoller.conf e ajuste.
-# Tokens NUNCA aqui: token_env aponta o NOME da variável no /opt/fw-migration/.env (0600).
+# Segredos NUNCA aqui: token_env/pass_env apontam o NOME da variável no
+# /opt/fw-migration/.env (0600).
+#
+# Topologia TECE1: o que era vsys no Palo Alto virou DOIS clusters FortiGate.
+# Coletamos pelo VIP de gerência de cada cluster (= sempre o nó ativo);
+# cada cluster é single-VDOM (root).
 
 [influx]
 url = http://10.114.35.75:8086
@@ -12,16 +17,23 @@ fast = 60
 slow = 300
 hourly = 3600
 
-[fw:FW05TECE01-FORTINET]
-host = 172.18.252.43
-token_env = FG_TECE1_FW05_TOKEN
+# Cluster CLIENTE (ex-vsys2 External-Clients) — VIP; nós FW0101/FW0102TECE01
+[fw:FGT-TECE1-CLIENTE]
+host = 172.18.252.142
+user = max.ferreira
+pass_env = FG_TECE1_PASS
 site = TECE1
-vdoms = root,vsys2
+vdoms = root
 enabled = true
 
-[fw:FW06TECE01-FORTINET]
-host = 172.18.252.44
-token_env = FG_TECE1_FW06_TOKEN
+# Cluster INFRABASE (ex-vsys1 Infrabase) — VIP; nós FW0201/FW0202TECE01
+[fw:FGT-TECE1-INFRABASE]
+host = 172.18.252.144
+user = max.ferreira
+pass_env = FG_TECE1_PASS
 site = TECE1
-vdoms = root,vsys2
+vdoms = root
 enabled = true
+
+# Preferível quando existir token de API read-only (RUNBOOK §2): troque
+# user/pass_env por  token_env = FG_TECE1_CLIENTE_TOKEN  (etc).

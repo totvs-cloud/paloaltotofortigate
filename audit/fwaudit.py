@@ -106,9 +106,23 @@ def cmd_fg_snapshot(args):
         client.logout()
 
 
+def _parse_fg_side(spec):
+    """'vsys1=/caminho[:vdom]' → (lado, (dir, vdom)). vdom default: root."""
+    lado, _, resto = spec.partition("=")
+    if lado not in ("vsys1", "vsys2") or not resto:
+        sys.exit("fwaudit compare: --fg espera vsys1=DIR[:vdom] ou "
+                 "vsys2=DIR[:vdom], recebeu %r" % spec)
+    fg_dir, _, vdom = resto.partition(":")
+    return lado, (fg_dir, vdom or "root")
+
+
 def cmd_compare(args):
     from palib import compare
-    result = compare.run(args.inventory, args.fg_dir, args.out)
+    sides = dict(_parse_fg_side(s) for s in (args.fg or []))
+    fg_map = compare.make_fg_map(fg_dir=args.fg_dir,
+                                 vsys1=sides.get("vsys1"),
+                                 vsys2=sides.get("vsys2"))
+    result = compare.run(args.inventory, fg_map, args.out)
     if args.influx:
         from palib.influxpush import InfluxWriter
         writer = InfluxWriter.from_env()
@@ -166,7 +180,10 @@ def main(argv=None):
 
     p = sub.add_parser("compare", help="Fase C: paridade PA↔FG (C01–C12)")
     p.add_argument("--inventory", required=True, help="inventario.json da fase offline")
-    p.add_argument("--fg-dir", required=True, help="diretório fg/ do fg-snapshot")
+    p.add_argument("--fg", action="append", metavar="LADO=DIR[:vdom]",
+                   help="topologia 2 clusters: --fg vsys1=<dir do fg-snapshot "
+                        "INFRABASE> --fg vsys2=<dir do CLIENTE> (vdom default root)")
+    p.add_argument("--fg-dir", help="modo legado: 1 FG multi-VDOM root+vsys2")
     p.add_argument("--out", default="out")
     p.add_argument("--site", default="TECE1")
     p.add_argument("--influx", action="store_true", help="publica contadores (mig_audit)")

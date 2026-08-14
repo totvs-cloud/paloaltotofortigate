@@ -87,14 +87,81 @@ def line(measurement, tags, fields, ts):
 # ---------------------------------------------------------------------------
 
 class FortiClient(object):
-    def __init__(self, host, token, timeout=30, verify=False):
+    """Token (Bearer) ou sessão (usuário/senha via logincheck + ccsrftoken).
+
+    logincheck/logout são a mesma exceção estreita do keygen no pa-forense:
+    autenticação, não configuração. Toda chamada de API segue na trava GET-only.
+    Em modo sessão, re-loga sozinho quando a sessão expira (401 ou HTML de login).
+    """
+
+    def __init__(self, host, token=None, username=None, password=None,
+                 timeout=30, verify=False):
+        if not token and not (username and password):
+            raise ValueError("FortiClient %s: token ou usuário+senha" % host)
         self.host = host
         self._token = token
+        self._username = username
+        self._password = password
+        self._csrf = None
         self.timeout = timeout
         self.ctx = ssl.create_default_context()
         if not verify:
             self.ctx.check_hostname = False
             self.ctx.verify_mode = ssl.CERT_NONE
+        import http.cookiejar
+        self._jar = http.cookiejar.CookieJar()
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=self.ctx),
+            urllib.request.HTTPCookieProcessor(self._jar))
+        if not token:
+            self._login()
+
+    def _login(self):
+        body = urllib.parse.urlencode({"username": self._username,
+                                       "secretkey": self._password,
+                                       "ajax": "1"}).encode()
+        req = urllib.request.Request(
+            "https://%s/logincheck" % self.host, data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "User-Agent": USER_AGENT})
+        with self._opener.open(req, timeout=self.timeout) as resp:
+            out = resp.read().decode("utf-8", "replace")
+        if not out.strip().startswith("1"):
+            raise RuntimeError("login recusado em %s (credencial/trusthost/"
+                               "admin bloqueado)" % self.host)
+        self._csrf = None
+        for cookie in self._jar:
+            if cookie.name.startswith("ccsrftoken"):
+                self._csrf = cookie.value.strip('"')
+        if not self._csrf:
+            raise RuntimeError("login em %s sem cookie ccsrftoken" % self.host)
+
+    def logout(self):
+        if self._token or self._csrf is None:
+            return
+        try:
+            req = urllib.request.Request("https://%s/logout" % self.host,
+                                         data=b"",
+                                         headers={"User-Agent": USER_AGENT})
+            self._opener.open(req, timeout=10).read()
+        except Exception:
+            pass
+        self._csrf = None
+
+    def _do_get(self, url):
+        headers = {"User-Agent": USER_AGENT}
+        if self._token:
+            headers["Authorization"] = "Bearer %s" % self._token
+        elif self._csrf:
+            headers["X-CSRFTOKEN"] = self._csrf
+        req = urllib.request.Request(url, headers=headers)
+        if self._token:
+            resp_cm = urllib.request.urlopen(req, timeout=self.timeout,
+                                             context=self.ctx)
+        else:
+            resp_cm = self._opener.open(req, timeout=self.timeout)
+        with resp_cm as resp:
+            return resp.read()
 
     def get(self, path, vdom=None, params=None):
         clean = "api/v2/" + path.lstrip("/")
@@ -105,12 +172,18 @@ class FortiClient(object):
         url = "https://%s/%s" % (self.host, clean)
         if query:
             url += "?" + urllib.parse.urlencode(query)
-        req = urllib.request.Request(
-            url, headers={"Authorization": "Bearer %s" % self._token,
-                          "User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=self.timeout,
-                                    context=self.ctx) as resp:
-            return json.loads(resp.read().decode("utf-8", "replace"))
+        try:
+            data = self._do_get(url)
+            return json.loads(data.decode("utf-8", "replace"))
+        except (urllib.error.HTTPError, ValueError) as exc:
+            expired = isinstance(exc, ValueError) or \
+                getattr(exc, "code", 0) in (401, 403)
+            if self._token or not expired:
+                raise
+            # sessão expirou (401/403 ou página HTML de login) → re-loga 1x
+            self._login()
+            data = self._do_get(url)
+            return json.loads(data.decode("utf-8", "replace"))
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +346,7 @@ def collect_tier(client, fw, tier, log):
         try:
             resp = client.get(path, vdom=vdom, params=params)
         except (urllib.error.URLError, urllib.error.HTTPError, OSError,
-                ValueError) as exc:
+                ValueError, RuntimeError) as exc:
             log.warning("%s %s%s: %s", fw["name"], path,
                         " vdom=%s" % vdom if vdom else "", exc)
             return 1
@@ -290,7 +363,7 @@ def collect_tier(client, fw, tier, log):
             checks = client.get("monitor/system/ha-checksums")
             lines.extend(parse_ha(stats, checks, dict(base), ts))
         except (urllib.error.URLError, urllib.error.HTTPError, OSError,
-                ValueError) as exc:
+                ValueError, RuntimeError) as exc:
             log.warning("%s ha: %s", fw["name"], exc)
             failed += 1
         for vdom in fw["vdoms"]:
@@ -376,7 +449,9 @@ def load_config(path):
         firewalls.append({
             "name": section[3:],
             "host": parser.get(section, "host"),
-            "token_env": parser.get(section, "token_env"),
+            "token_env": parser.get(section, "token_env", fallback=""),
+            "user": parser.get(section, "user", fallback=""),
+            "pass_env": parser.get(section, "pass_env", fallback=""),
             "site": parser.get(section, "site", fallback="TECE1"),
             "vdoms": [v.strip() for v in
                       parser.get(section, "vdoms", fallback="root").split(",")
@@ -417,13 +492,40 @@ def make_logger(logfile):
     return log
 
 
+_CLIENTS = {}   # sessão sobrevive entre ciclos (evita 1 login por minuto)
+
+
+def _client_for(fw, log):
+    cached = _CLIENTS.get(fw["name"])
+    if cached is not None:
+        return cached
+    try:
+        if fw["token_env"] and os.environ.get(fw["token_env"], ""):
+            client = FortiClient(fw["host"],
+                                 token=os.environ[fw["token_env"]])
+        elif fw["user"] and fw["pass_env"]:
+            password = os.environ.get(fw["pass_env"], "")
+            if not password:
+                log.error("%s: env %s vazia — pulando", fw["name"], fw["pass_env"])
+                return None
+            client = FortiClient(fw["host"], username=fw["user"],
+                                 password=password)
+        else:
+            log.error("%s: sem credencial (token_env OU user+pass_env) — pulando",
+                      fw["name"])
+            return None
+    except (RuntimeError, ValueError, urllib.error.URLError, OSError) as exc:
+        log.error("%s: autenticação falhou: %s", fw["name"], exc)
+        return None
+    _CLIENTS[fw["name"]] = client
+    return client
+
+
 def run_cycle(influx_cfg, firewalls, tiers, log, dry_run=False):
     for fw in firewalls:
-        token = os.environ.get(fw["token_env"], "")
-        if not token:
-            log.error("%s: env %s vazia — pulando", fw["name"], fw["token_env"])
+        client = _client_for(fw, log)
+        if client is None:
             continue
-        client = FortiClient(fw["host"], token)
         started = time.time()
         all_lines = []
         total_failed = 0
@@ -443,6 +545,10 @@ def run_cycle(influx_cfg, firewalls, tiers, log, dry_run=False):
         log.info("%s: tiers=%s lines=%d failed_endpoints=%d influx=%s",
                  fw["name"], "+".join(tiers), len(all_lines), total_failed,
                  "dry-run" if dry_run else ("ok" if ok else "ERRO"))
+        # health é sempre a última linha: >1 = todos os endpoints falharam →
+        # descarta a sessão para re-autenticar do zero no próximo ciclo
+        if total_failed > 0 and len(all_lines) <= 1:
+            _CLIENTS.pop(fw["name"], None)
 
 
 def selftest():

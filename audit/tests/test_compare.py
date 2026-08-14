@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Fase C contra um FG sintético: 1 match e 1 falta em cada categoria chave."""
+"""Fase C contra um FG sintético: 1 match e 1 falta em cada categoria chave.
+
+Usa o modo legado (1 diretório multi-VDOM root+vsys2) via make_fg_map(fg_dir=…);
+a classe TwoClusters cobre o mapa de 2 clusters da topologia real do TECE1."""
 
 import json
 import os
@@ -68,8 +71,8 @@ class Compare(unittest.TestCase):
         # vsys2 vazio (nada coletado)
         os.makedirs(os.path.join(cls.fg, "vsys2"), exist_ok=True)
 
-        cls.by_id = dict((r["id"], r)
-                         for r in [c(cls.inv, cls.fg) for c in compare.ALL_COMPARES])
+        fg_map = compare.make_fg_map(fg_dir=cls.fg)
+        cls.by_id = dict((r["id"], r) for r in compare.run_checks(cls.inv, fg_map))
 
     @classmethod
     def tearDownClass(cls):
@@ -119,12 +122,12 @@ class Compare(unittest.TestCase):
 
     def test_c09_objetos_sufixo(self):
         r = self.by_id["C09"]
-        # No root: HST-10.9.9.9 casa via sufixo _1 e DUP-OBJ casa direto.
-        # (vsys2 está vazio de propósito — lá tudo falta mesmo.)
+        # No lado infrabase(root): HST-10.9.9.9 casa via sufixo _1 e DUP-OBJ
+        # casa direto. (vsys2 está vazio de propósito — lá tudo falta mesmo.)
         faltando_root = " ".join(m for m in r["missing_fg"]
-                                 if m.startswith("root:"))
+                                 if m.startswith("infrabase(root):"))
         self.assertNotIn("HST-10.9.9.9", faltando_root)
-        self.assertNotIn("root: DUP-OBJ", faltando_root)
+        self.assertNotIn("infrabase(root): DUP-OBJ", faltando_root)
 
     def test_c10_edl(self):
         r = self.by_id["C10"]
@@ -140,6 +143,55 @@ class Compare(unittest.TestCase):
         faltando = " ".join(r["missing_fg"])
         self.assertNotIn("syslog", faltando)        # syslog OK
         self.assertIn("dns", faltando)              # dns/ntp/snmp ausentes
+
+
+class TwoClusters(unittest.TestCase):
+    """Topologia real do TECE1: vsys1→cluster INFRABASE, vsys2→cluster CLIENTE,
+    cada um no seu diretório de fg-snapshot, ambos vdom root."""
+
+    @classmethod
+    def setUpClass(cls):
+        root, meta = paxml.load_snapshot(FIXTURE)
+        cls.inv = inventory.build_inventory(root, meta)
+        cls.dir_infra = tempfile.mkdtemp(prefix="fg-infra-")
+        cls.dir_cli = tempfile.mkdtemp(prefix="fg-cli-")
+        # rota do VR Externo_Infrabase existe no cluster INFRABASE
+        write_json(cls.dir_infra, "root", "cmdb_router_static",
+                   [{"dst": "10.1.1.0 255.255.255.0", "device": "VPN-CLIENT-A"}])
+        # VPN de cliente existe no cluster CLIENTE
+        write_json(cls.dir_cli, "root", "cmdb_vpn_ipsec_phase1-interface",
+                   [{"name": "CBL3SH-F1-01"}])
+        # interfaces globais divididas entre os dois clusters
+        for d, vlanid, ip in ((cls.dir_infra, 100, "198.51.100.1 255.255.255.248"),):
+            gdir = os.path.join(d, "_global")
+            os.makedirs(gdir, exist_ok=True)
+            with open(os.path.join(gdir, "cmdb_system_interface.json"), "w",
+                      encoding="utf-8") as fh:
+                json.dump({"results": [{"name": "vlan_%d" % vlanid,
+                                        "vlanid": vlanid, "ip": ip}]}, fh)
+        fg_map = compare.make_fg_map(vsys1=(cls.dir_infra, "root"),
+                                     vsys2=(cls.dir_cli, "root"))
+        cls.by_id = dict((r["id"], r) for r in compare.run_checks(cls.inv, fg_map))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.dir_infra, ignore_errors=True)
+        shutil.rmtree(cls.dir_cli, ignore_errors=True)
+
+    def test_c01_rota_no_lado_certo(self):
+        r = self.by_id["C01"]
+        self.assertEqual(r["matched"], 1)            # 10.1.1.0/24 no INFRABASE
+        faltando = " ".join(r["missing_fg"])
+        self.assertIn("infrabase(root)", faltando)   # default/agregada/quebrada
+
+    def test_c03_vpn_cliente_contada(self):
+        r = self.by_id["C03"]
+        cbl = [i for i in r["itens"] if "CBL3SH" in i["vpn_fg"]][0]
+        self.assertEqual(cbl["no_fg"], "1")          # veio do cluster CLIENTE
+
+    def test_c04_interfaces_somadas_dos_dois(self):
+        r = self.by_id["C04"]
+        self.assertEqual(r["matched"], 1)            # vlan 100 no INFRABASE
 
 
 if __name__ == "__main__":

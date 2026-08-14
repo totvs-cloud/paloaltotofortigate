@@ -7,7 +7,8 @@ via RDM — nunca a ferramenta.
 
 ## 1. Pré-requisito de rede — validar ANTES de tudo
 
-A gerência dos FortiGates (`172.18.252.43/.44`) é hoje publicada para o Check_MK
+O destino são DOIS clusters FG: CLIENTE (VIP `172.18.252.142`) e INFRABASE
+(VIP `172.18.252.144`). A gerência do desenho antigo (`172.18.252.43/.44`) é publicada para o Check_MK
 **via DNAT no próprio Palo Alto** (`DNAT-FW05TECE01_Trad-1` / `DNAT-FW06TECE01_Trad-1`,
 destino `172.27.53.21/.22`). Se a coleta depender desse caminho, ela morre exatamente
 no passo "shutdown interfaces PA" da virada (aba 05).
@@ -15,8 +16,10 @@ no passo "shutdown interfaces PA" da virada (aba 05).
 Da dev-redes TECE (172.18.158.70–.73), valide rota direta:
 
 ```bash
-ip route get 172.18.252.43
-curl -sk -o /dev/null -w '%{http_code}\n' https://172.18.252.43/api/v2/monitor/system/status
+for ip in 172.18.252.142 172.18.252.144; do
+  printf '%s: ' $ip
+  curl -sk -o /dev/null -w '%{http_code}\n' https://$ip/api/v2/monitor/system/status
+done
 # 401 = rede OK (falta token). 000/timeout = tratar rota/liberação ANTES de seguir.
 ```
 
@@ -25,7 +28,8 @@ ver §2). Não seguir adiante sem isso resolvido.
 
 ## 2. Credencial FortiGate (proposta escrita — executa quem opera o FG)
 
-Criar admin de API **somente leitura** com trusted host restrito à dev-redes:
+Criar admin de API **somente leitura** com trusted host restrito à dev-redes —
+**em CADA um dos 2 clusters** (cada um é single-VDOM `root`):
 
 ```text
 config system accprofile
@@ -47,7 +51,7 @@ end
 config system api-user
     edit "api-monitor"
         set accprofile "monitor-ro"
-        set vdom "root" "vsys2"
+        set vdom "root"
         config trusthost
             edit 1
                 set ipv4-trusthost 172.18.158.64 255.255.255.192
@@ -58,7 +62,7 @@ end
 execute api-user generate-key api-monitor
 ```
 
-Guardar o token no `.env` (0600) — `FG_TECE1_FW05_TOKEN=` / `FG_TECE1_FW06_TOKEN=`.
+Guardar o token no `.env` (0600) — `FG_TECE1_CLIENTE_TOKEN=` / `FG_TECE1_INFRABASE_TOKEN=` (um api-user por cluster).
 O token viaja **só** em header `Authorization: Bearer` (decisão D3).
 
 **Alternativa temporária** (sem api-user ainda): o `fg-snapshot` aceita login por
@@ -115,8 +119,8 @@ escrita, inclua no unit; config local da box vence a do repo.
 | c | `python3 audit/fwaudit.py pa-baseline --host 172.18.252.23 --key-env PA_TECE1_FW01_KEY --influx --out out/` | Evidências "antes" (aba 09) + `mig_pa_baseline` |
 | d | `systemctl start fgpoller` | Lado FG do dashboard no ar |
 | e | Importar `dashboards/Migracao-PA-FG-TECE1/dashboard.json` no Grafana central | Dashboard |
-| f | `python3 audit/fwaudit.py fg-snapshot --host 172.18.252.43 --token-env FG_TECE1_FW05_TOKEN --vdoms root,vsys2 --out out/` | Dump read-only do FG |
-| g | `python3 audit/fwaudit.py compare --inventory out/<ts>/inventario.json --fg-dir out/<ts>/fg-<host> --influx --out out/` | Paridade C01–C12 → gaps.md + painel "Gaps" |
+| f | `fg-snapshot` nos DOIS clusters (VIPs .144 e .142, `--vdoms root`) | Dump read-only dos clusters |
+| g | `compare --fg vsys1=<dir INFRABASE> --fg vsys2=<dir CLIENTE> --influx` | Paridade C01–C12 → gaps.md + painel "Gaps" |
 
 Repetir (f)+(g) **diariamente** até a virada e **de hora em hora no dia**; repetir
 (c) imediatamente antes da janela (baseline oficial).

@@ -22,8 +22,10 @@
   do compare final; o painel de config-change (Row 6) cobre o drift do freeze.
 - **`monitor/system/resource/usage` muda formato entre builds 7.4**: parser
   defensivo (escalar, lista histórica ou dict `current`) + `--selftest`.
-- **Multi-VDOM do destino é hipótese** (root+vsys2, padrão da conversão TESP4):
-  a lista de vdoms é config (`fgpoller.conf` / `--vdoms`), não código.
+- **Topologia de destino confirmada em 14/08: DOIS clusters FG single-VDOM**
+  (CLIENTE VIP .142 = ex-vsys2; INFRABASE VIP .144 = ex-vsys1). O compare
+  usa `--fg lado=dir`; o modo legado 1-FG-multi-VDOM segue disponível
+  (`--fg-dir`). Coleta sempre pelo VIP (nó ativo).
 - **Limites de capacidade da VM (A18) são referência de datasheet**: confirmar
   no destino com `monitor/system/vdom-resource`.
 - **C09 compara address por nome com tolerância a sufixo `_1`/`-1`**: serviços e

@@ -86,11 +86,24 @@ def cmd_pa_baseline(args):
 def cmd_fg_snapshot(args):
     from palib.fgclient import FortiClient
     from palib import fgsnap
-    token = env_secret(args.token_env, "token de API do FG")
-    client = FortiClient(args.host, token, verify=args.verify,
-                         throttle=args.throttle, dry_run=args.dry_run)
+    if args.token_env:
+        client = FortiClient(args.host, token=env_secret(args.token_env,
+                                                         "token de API do FG"),
+                             verify=args.verify, throttle=args.throttle,
+                             dry_run=args.dry_run)
+    elif args.user and args.pass_env:
+        client = FortiClient(args.host, username=args.user,
+                             password=env_secret(args.pass_env, "senha do admin FG"),
+                             verify=args.verify, throttle=args.throttle,
+                             dry_run=args.dry_run)
+    else:
+        sys.exit("fg-snapshot: informe --token-env OU --user + --pass-env "
+                 "(a senha vai numa variável de ambiente, nunca em argv)")
     vdoms = [v.strip() for v in args.vdoms.split(",") if v.strip()]
-    fgsnap.snapshot(client, vdoms, args.out, hostname=args.hostname)
+    try:
+        fgsnap.snapshot(client, vdoms, args.out, hostname=args.hostname)
+    finally:
+        client.logout()
 
 
 def cmd_compare(args):
@@ -139,7 +152,9 @@ def main(argv=None):
 
     p = sub.add_parser("fg-snapshot", help="Fase B2: dump read-only do FortiGate")
     p.add_argument("--host", required=True)
-    p.add_argument("--token-env", required=True, help="NOME da env var com o token")
+    p.add_argument("--token-env", help="NOME da env var com o token de API (preferido)")
+    p.add_argument("--user", help="admin p/ login por sessão (alternativa ao token)")
+    p.add_argument("--pass-env", help="NOME da env var com a senha do admin")
     p.add_argument("--hostname", default="", help="rótulo (default: host)")
     p.add_argument("--vdoms", default="root,vsys2")
     p.add_argument("--out", default="out")

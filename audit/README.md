@@ -11,6 +11,8 @@ python3 fwaudit.py pa-baseline --host 172.18.252.23 --key-env PA_TECE1_FW01_KEY 
 
 # Fase B2 — dump read-only do FortiGate (paginado, com throttle)
 python3 fwaudit.py fg-snapshot --host 172.18.252.43 --token-env FG_TECE1_FW05_TOKEN --vdoms root,vsys2 --out out/
+#   sem token de API? login por sessão (senha SEMPRE via env, ex.: read -s):
+python3 fwaudit.py fg-snapshot --host 172.18.252.43 --user admin --pass-env FG_PASS --vdoms root,vsys2 --out out/
 
 # Fase C — paridade PA↔FG → gaps.md (+ mig_audit no Influx com --influx)
 python3 fwaudit.py compare --inventory out/<ts>/inventario.json --fg-dir out/<ts>/fg-<host> --influx --out out/

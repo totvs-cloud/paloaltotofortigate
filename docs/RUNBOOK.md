@@ -61,6 +61,13 @@ execute api-user generate-key api-monitor
 Guardar o token no `.env` (0600) — `FG_TECE1_FW05_TOKEN=` / `FG_TECE1_FW06_TOKEN=`.
 O token viaja **só** em header `Authorization: Bearer` (decisão D3).
 
+**Alternativa temporária** (sem api-user ainda): o `fg-snapshot` aceita login por
+sessão com um admin existente — `--user admin --pass-env FG_PASS`, com a senha
+carregada por `read -s` (nunca em argv/histórico). A trava GET-only vale igual;
+login/logout são a mesma exceção estreita do keygen do pa-forense. Usar admin
+de escrita para coleta é quebra-galho de janela: gere o token read-only assim
+que possível e **troque a senha** se ela tiver circulado fora do cofre.
+
 ## 3. Credencial Palo Alto
 
 Reusar o padrão do palo-collector da própria box: as chaves já existem no

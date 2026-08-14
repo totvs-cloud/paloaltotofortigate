@@ -82,5 +82,32 @@ class MaskKey(unittest.TestCase):
         self.assertIn("MASCARADA", out)
 
 
+class FortiClientAuth(unittest.TestCase):
+    """O cliente exige credencial e mantém a trava GET-only nos dois modos."""
+
+    def test_sem_credencial_aborta(self):
+        from palib.fgclient import FortiClient
+        with self.assertRaises(SystemExit):
+            FortiClient("192.0.2.1")
+
+    def test_modo_token_respeita_trava(self):
+        from palib.fgclient import FortiClient
+        client = FortiClient("192.0.2.1", token="x", dry_run=True)
+        # path fora de monitor/cmdb aborta ANTES de qualquer rede (mesmo dry-run)
+        with self.assertRaises(SystemExit):
+            client.get("logincheck")
+        with self.assertRaises(SystemExit):
+            client.get("api/v2/log/memory")
+
+    def test_modo_sessao_respeita_trava(self):
+        from palib.fgclient import FortiClient
+        # dry_run pula o login de rede; a trava continua valendo no get()
+        client = FortiClient("192.0.2.1", username="admin", password="s",
+                             dry_run=True)
+        with self.assertRaises(SystemExit):
+            client.get("jsonrpc")
+        self.assertIsNone(client.get("monitor/system/status"))  # dry-run → None
+
+
 if __name__ == "__main__":
     unittest.main()

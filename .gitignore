@@ -1,0 +1,24 @@
+# segredos e credenciais
+.env
+*.key
+*.token
+
+# snapshots/configs de firewall e evidências — NUNCA versionar (PSK, hashes, IPs de cliente)
+*.xml
+*.conf
+snapshot*
+evidencias/
+out/
+# exceções (fixtures sintéticas e exemplos, sem segredo algum) — depois dos
+# padrões acima: a última regra que casa vence
+!audit/tests/fixtures/*.xml
+!fgpoller/fgpoller.conf.example
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# logs
+logs/
+*.log

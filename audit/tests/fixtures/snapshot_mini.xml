@@ -1,0 +1,314 @@
+<?xml version="1.0"?>
+<config version="10.2.0" urldb="paloaltonetworks" detail-version="10.2.9">
+  <mgt-config>
+    <users>
+      <entry name="admin">
+        <phash>$5$FAKEHASHFAKEHASHFAKEHASH</phash>
+      </entry>
+    </users>
+  </mgt-config>
+  <shared>
+    <address>
+      <entry name="HST-10.9.9.9"><ip-netmask>10.9.9.9/32</ip-netmask></entry>
+      <entry name="DUP-OBJ"><ip-netmask>1.1.1.1/32</ip-netmask></entry>
+      <entry name="FQDN-updates.example.com"><fqdn>updates.example.com</fqdn></entry>
+      <entry name="Check_MK-centralizado"><ip-netmask>172.27.9.9/32</ip-netmask></entry>
+    </address>
+    <address-group>
+      <entry name="GRP-SHARED"><static><member>HST-10.9.9.9</member></static></entry>
+    </address-group>
+    <service>
+      <entry name="tcp-443"><protocol><tcp><port>443</port></tcp></protocol></entry>
+    </service>
+    <external-list>
+      <entry name="EDL-Test">
+        <type><ip>
+          <url>https://feeds.example.com/block.txt</url>
+          <recurring><hourly/></recurring>
+          <certificate-profile>certificate_EDL-Edges</certificate-profile>
+        </ip></type>
+      </entry>
+    </external-list>
+    <log-settings>
+      <syslog>
+        <entry name="syslog_ELK">
+          <server>
+            <entry name="ELK">
+              <server>172.18.100.2</server>
+              <port>9001</port>
+              <transport>TCP</transport>
+              <format>BSD</format>
+            </entry>
+          </server>
+        </entry>
+      </syslog>
+    </log-settings>
+    <certificate>
+      <entry name="certificate_EDL-Edges">
+        <not-valid-after>Aug 30 12:00:00 2026 GMT</not-valid-after>
+        <subject>/CN=edl.example.com</subject>
+      </entry>
+    </certificate>
+  </shared>
+  <devices>
+    <entry name="localhost.localdomain">
+      <deviceconfig>
+        <system>
+          <hostname>FW-FIXTURE</hostname>
+          <ip-address>192.0.2.10</ip-address>
+          <timezone>America/Recife</timezone>
+          <dns-setting><servers><primary>192.0.2.53</primary><secondary>192.0.2.54</secondary></servers></dns-setting>
+          <ntp-servers><primary-ntp-server><ntp-server-address>192.0.2.123</ntp-server-address></primary-ntp-server></ntp-servers>
+          <snmp-setting>
+            <access-setting><version><v2c><snmp-community-string>COMMUNITY123</snmp-community-string></v2c></version></access-setting>
+          </snmp-setting>
+        </system>
+        <high-availability>
+          <enabled>yes</enabled>
+          <interface>
+            <ha1><port>ha1-a</port><ip-address>11.0.0.1</ip-address><netmask>255.255.255.252</netmask></ha1>
+            <ha2><port>ethernet1/11</port><ip-address>11.0.0.21</ip-address><netmask>255.255.255.252</netmask></ha2>
+          </interface>
+          <group><group-id>7</group-id><peer-ip>11.0.0.2</peer-ip></group>
+        </high-availability>
+      </deviceconfig>
+      <network>
+        <interface>
+          <ethernet>
+            <entry name="ethernet1/1"><aggregate-group>ae1</aggregate-group></entry>
+            <entry name="ethernet1/2"><aggregate-group>ae1</aggregate-group></entry>
+            <entry name="ethernet1/11"><ha/></entry>
+          </ethernet>
+          <aggregate-ethernet>
+            <entry name="ae1">
+              <layer3>
+                <units>
+                  <entry name="ae1.100">
+                    <tag>100</tag>
+                    <ip><entry name="198.51.100.1/29"/></ip>
+                    <comment>WAN fixture</comment>
+                  </entry>
+                  <entry name="ae1.200">
+                    <tag>200</tag>
+                    <ip><entry name="10.1.0.1/16"/></ip>
+                  </entry>
+                </units>
+              </layer3>
+            </entry>
+          </aggregate-ethernet>
+          <loopback><units><entry name="loopback.1"><ip><entry name="198.51.100.33/32"/></ip></entry></units></loopback>
+          <tunnel><units>
+            <entry name="tunnel.1"/>
+            <entry name="tunnel.2"/>
+          </units></tunnel>
+        </interface>
+        <ike>
+          <crypto-profiles>
+            <ike-crypto-profiles>
+              <entry name="IKE-PROF-1">
+                <dh-group><member>group14</member></dh-group>
+                <encryption><member>aes-256-cbc</member></encryption>
+                <hash><member>sha256</member></hash>
+                <lifetime><hours>8</hours></lifetime>
+              </entry>
+            </ike-crypto-profiles>
+            <ipsec-crypto-profiles>
+              <entry name="IPSEC-PROF-1">
+                <esp><encryption><member>aes-256-cbc</member></encryption><authentication><member>sha256</member></authentication></esp>
+                <dh-group>group14</dh-group>
+                <lifetime><hours>1</hours></lifetime>
+              </entry>
+            </ipsec-crypto-profiles>
+          </crypto-profiles>
+          <gateway>
+            <entry name="GW-PEER-A">
+              <authentication><pre-shared-key><key>SUPERSECRETPSK==</key></pre-shared-key></authentication>
+              <peer-address><ip>203.0.113.9</ip></peer-address>
+              <local-address><interface>loopback.1</interface><ip>198.51.100.33/32</ip></local-address>
+              <protocol><version>ikev2</version></protocol>
+            </entry>
+          </gateway>
+        </ike>
+        <tunnel>
+          <ipsec>
+            <entry name="TUN-PEER-A">
+              <auto-key>
+                <ike-gateway><entry name="GW-PEER-A"/></ike-gateway>
+                <proxy-id><entry name="PID1"><local>10.1.1.0/24</local><remote>10.2.0.0/24</remote></entry></proxy-id>
+              </auto-key>
+              <tunnel-interface>tunnel.1</tunnel-interface>
+              <tunnel-monitor><enable>no</enable></tunnel-monitor>
+            </entry>
+            <entry name="TUN-SEM-ROTA">
+              <auto-key><ike-gateway><entry name="GW-PEER-A"/></ike-gateway></auto-key>
+              <tunnel-interface>tunnel.2</tunnel-interface>
+            </entry>
+          </ipsec>
+        </tunnel>
+        <virtual-router>
+          <entry name="Externo_Infrabase">
+            <routing-table><ip><static-route>
+              <entry name="default"><destination>0.0.0.0/0</destination><interface>ae1.100</interface><nexthop><ip-address>198.51.100.6</ip-address></nexthop><metric>10</metric></entry>
+              <entry name="vpn-client-a"><destination>10.1.1.0/24</destination><interface>tunnel.1</interface><metric>10</metric></entry>
+              <entry name="agregada-lan"><destination>10.1.0.0/16</destination><interface>ae1.200</interface><nexthop><ip-address>10.1.0.254</ip-address></nexthop><metric>10</metric></entry>
+              <entry name="rota-quebrada"><destination>10.5.5.0/24</destination><interface>tunnel.99</interface><metric>10</metric></entry>
+            </static-route></ip></routing-table>
+          </entry>
+        </virtual-router>
+      </network>
+      <vsys>
+        <entry name="vsys1">
+          <display-name>Fixture-VSYS1</display-name>
+          <import><network><interface><member>ae1.100</member><member>ae1.200</member></interface></network></import>
+          <zone>
+            <entry name="Z-WAN"><network><layer3><member>ae1.100</member></layer3></network></entry>
+            <entry name="Z-VPN"><network><layer3><member>tunnel.1</member><member>tunnel.88</member></layer3></network></entry>
+          </zone>
+          <address>
+            <entry name="DUP-OBJ"><ip-netmask>2.2.2.2/32</ip-netmask></entry>
+            <entry name="NOME-ABSURDAMENTE-LONGO-QUE-PASSA-DO-LIMITE-PRATICO-DO-FORTIOS-PARA-NOMES-DE-OBJETO-XXXX"><ip-netmask>3.3.3.3/32</ip-netmask></entry>
+          </address>
+          <service>
+            <entry name="svc-8080"><protocol><tcp><port>8080</port></tcp></protocol></entry>
+          </service>
+          <rulebase>
+            <security>
+              <rules>
+                <entry name="deny-edl-topo" uuid="u1">
+                  <from><member>Z-WAN</member></from><to><member>any</member></to>
+                  <source><member>EDL-Test</member></source>
+                  <destination><member>any</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>any</member></service>
+                  <action>deny</action>
+                  <log-setting>FWD_TEST</log-setting>
+                </entry>
+                <entry name="allow-geo" uuid="u2">
+                  <from><member>any</member></from><to><member>Z-WAN</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>EU</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>tcp-443</member></service>
+                  <action>allow</action>
+                  <log-setting>FWD_TEST</log-setting>
+                  <profile-setting><profiles><vulnerability><member>strict</member></vulnerability></profiles></profile-setting>
+                </entry>
+                <entry name="allow-appid" uuid="u3">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>HST-10.9.9.9</member></source>
+                  <destination><member>any</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>ssl</member><member>web-browsing</member></application>
+                  <service><member>application-default</member></service>
+                  <action>allow</action>
+                  <log-setting>FWD_TEST</log-setting>
+                  <profile-setting><group><member>PG-DEFAULT</member></group></profile-setting>
+                </entry>
+                <entry name="allow-anyany" uuid="u4">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>GRP-SHARED</member></source>
+                  <destination><member>any</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>any</member></service>
+                  <action>allow</action>
+                  <log-setting>FWD_TEST</log-setting>
+                  <profile-setting><group><member>PG-DEFAULT</member></group></profile-setting>
+                </entry>
+                <entry name="allow-userid" uuid="u5">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>any</member></destination>
+                  <source-user><member>cn=vpn-users,dc=example</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>tcp-443</member></service>
+                  <action>allow</action>
+                  <log-setting>FWD_TEST</log-setting>
+                  <profile-setting><group><member>PG-DEFAULT</member></group></profile-setting>
+                </entry>
+                <entry name="allow-sem-log" uuid="u6">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>HST-10.9.9.9</member></source>
+                  <destination><member>HST-10.9.9.9</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>tcp-443</member></service>
+                  <action>allow</action>
+                  <profile-setting><group><member>PG-DEFAULT</member></group></profile-setting>
+                </entry>
+                <entry name="allow-fqdn" uuid="u7">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>FQDN-updates.example.com</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>tcp-443</member></service>
+                  <action>allow</action>
+                  <log-setting>FWD_TEST</log-setting>
+                </entry>
+                <entry name="regra-desabilitada" uuid="u8">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>any</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>any</member></service>
+                  <action>allow</action>
+                  <disabled>yes</disabled>
+                  <log-setting>FWD_TEST</log-setting>
+                </entry>
+              </rules>
+            </security>
+            <nat>
+              <rules>
+                <entry name="DNAT-monitor-cmk" uuid="n1">
+                  <from><member>Z-WAN</member></from><to><member>Z-WAN</member></to>
+                  <source><member>Check_MK-centralizado</member></source>
+                  <destination><member>172.27.53.99/32</member></destination>
+                  <service>any</service>
+                  <to-interface>any</to-interface>
+                  <destination-translation><translated-address>172.18.252.43/32</translated-address></destination-translation>
+                </entry>
+                <entry name="SNAT-saida" uuid="n2">
+                  <from><member>any</member></from><to><member>Z-WAN</member></to>
+                  <source><member>HST-10.9.9.9</member></source>
+                  <destination><member>any</member></destination>
+                  <service>any</service>
+                  <source-translation><dynamic-ip-and-port><translated-address><member>198.51.100.2</member></translated-address></dynamic-ip-and-port></source-translation>
+                </entry>
+              </rules>
+            </nat>
+          </rulebase>
+          <log-settings>
+            <profiles><entry name="FWD_TEST"/></profiles>
+          </log-settings>
+        </entry>
+        <entry name="vsys2">
+          <display-name>Fixture-VSYS2</display-name>
+          <zone>
+            <entry name="Z2-EXT"><network><layer3><member>ae1.200</member></layer3></network></entry>
+          </zone>
+          <rulebase>
+            <security>
+              <rules>
+                <entry name="v2-allow" uuid="v1">
+                  <from><member>any</member></from><to><member>any</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>any</member></destination>
+                  <source-user><member>any</member></source-user>
+                  <application><member>any</member></application>
+                  <service><member>tcp-443</member></service>
+                  <action>allow</action>
+                  <log-setting>FWD_TEST</log-setting>
+                  <profile-setting><profiles><virus><member>default</member></virus></profiles></profile-setting>
+                </entry>
+              </rules>
+            </security>
+          </rulebase>
+        </entry>
+      </vsys>
+    </entry>
+  </devices>
+</config>

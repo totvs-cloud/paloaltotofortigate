@@ -1,0 +1,27 @@
+# fgpoller — copie para /opt/fw-migration/fgpoller.conf e ajuste.
+# Tokens NUNCA aqui: token_env aponta o NOME da variável no /opt/fw-migration/.env (0600).
+
+[influx]
+url = http://10.114.35.75:8086
+org = TOTVS
+bucket = fw_migration
+token_env = INFLUX_TOKEN
+
+[intervals]
+fast = 60
+slow = 300
+hourly = 3600
+
+[fw:FW05TECE01-FORTINET]
+host = 172.18.252.43
+token_env = FG_TECE1_FW05_TOKEN
+site = TECE1
+vdoms = root,vsys2
+enabled = true
+
+[fw:FW06TECE01-FORTINET]
+host = 172.18.252.44
+token_env = FG_TECE1_FW06_TOKEN
+site = TECE1
+vdoms = root,vsys2
+enabled = true

@@ -1,0 +1,30 @@
+[Unit]
+Description=fgpoller - metricas FortiGate para o dashboard de migracao PA->FG
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fgpoller
+Group=fgpoller
+WorkingDirectory=/opt/fw-migration
+ExecStart=/usr/bin/python3 /opt/fw-migration/fgpoller.py --config /opt/fw-migration/fgpoller.conf --env-file /opt/fw-migration/.env --log-file /opt/fw-migration/logs/fgpoller.log
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+
+# Hardening (mesmo padrao do palo-collector.service).
+# ATENCAO: ProtectSystem=strict silencia erro de escrita fora de ReadWritePaths
+# ("read-only file system" so no journal) - todo diretorio novo de escrita
+# PRECISA entrar na linha abaixo. Licao documentada do deploy do TESP3.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/fw-migration/logs
+
+# Segredos so via EnvironmentFile 0600 (token FG + token Influx).
+EnvironmentFile=-/opt/fw-migration/.env
+
+[Install]
+WantedBy=multi-user.target

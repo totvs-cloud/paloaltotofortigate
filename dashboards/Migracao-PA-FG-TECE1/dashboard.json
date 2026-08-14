@@ -1,0 +1,2143 @@
+{
+  "uid": "migracao-pa-fg-tece1",
+  "title": "Migração PA → FG — TECE1",
+  "description": "Virada FW01/02TECE01 (Palo Alto) → FW05/06TECE01-FORTINET. Espelha os critérios de aceite (aba 08) e evidências (aba 09) do Plano de Virada. PA=azul, FG=laranja em todos os painéis.",
+  "tags": [
+    "migracao",
+    "palo",
+    "fortigate",
+    "tece1",
+    "borda"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "bucket_pa",
+        "type": "textbox",
+        "label": "Bucket PA",
+        "query": "paloalto",
+        "current": {
+          "text": "paloalto",
+          "value": "paloalto"
+        }
+      },
+      {
+        "name": "bucket_cap",
+        "type": "textbox",
+        "label": "Bucket capacity",
+        "query": "paloalto_capacity",
+        "current": {
+          "text": "paloalto_capacity",
+          "value": "paloalto_capacity"
+        }
+      },
+      {
+        "name": "bucket_aud",
+        "type": "textbox",
+        "label": "Bucket auditoria",
+        "query": "paloalto_audit",
+        "current": {
+          "text": "paloalto_audit",
+          "value": "paloalto_audit"
+        }
+      },
+      {
+        "name": "bucket_mig",
+        "type": "textbox",
+        "label": "Bucket migração",
+        "query": "fw_migration",
+        "current": {
+          "text": "fw_migration",
+          "value": "fw_migration"
+        }
+      },
+      {
+        "name": "site",
+        "type": "query",
+        "label": "Site",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "efcqeppjazvgga"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"${bucket_pa}\", tag: \"site\")",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "text": "TECE01",
+          "value": "TECE01"
+        },
+        "definition": "tagValues(site)"
+      },
+      {
+        "name": "pa_fw",
+        "type": "query",
+        "label": "PA",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "efcqeppjazvgga"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"${bucket_pa}\", tag: \"hostname\", predicate: (r) => r.site =~ /^${site:regex}$/)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "definition": "tagValues(hostname) PA"
+      },
+      {
+        "name": "fg_fw",
+        "type": "query",
+        "label": "FG",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "efcqeppjazvgga"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"${bucket_mig}\", tag: \"hostname\")",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "definition": "tagValues(hostname) FG"
+      },
+      {
+        "name": "vdom",
+        "type": "query",
+        "label": "VDOM",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "efcqeppjazvgga"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"${bucket_mig}\", tag: \"vdom\")",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "definition": "tagValues(vdom)"
+      },
+      {
+        "name": "fg_wan",
+        "type": "textbox",
+        "label": "Interface WAN FG (regex)",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "silenciados",
+        "type": "textbox",
+        "label": "Admins silenciados",
+        "query": "apiuser",
+        "current": {
+          "text": "apiuser",
+          "value": "apiuser"
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "1 · Status da virada — quem carrega o tráfego",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "HA Palo Alto (por nó)",
+      "description": "Estado HA de cada PA (tag ha_state do palo-collector).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: -15m)\n  |> filter(fn: (r) => r._measurement == \"sessions\" and r._field == \"num_active\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> last()\n  |> map(fn: (r) => ({hostname: r.hostname, _value: r.ha_state}))\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "string",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "active": {
+                  "text": "ACTIVE",
+                  "color": "green"
+                },
+                "passive": {
+                  "text": "PASSIVE",
+                  "color": "blue"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "textMode": "value_and_name",
+        "orientation": "vertical"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "HA FortiGate (sync/checksum)",
+      "description": "fg_ha.checksum_match: 1 = cluster com config idêntica. Cluster novo é onde a migração quebra.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 5,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_ha\" and r._field == \"checksum_match\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> last()\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "SYNC OK",
+                  "color": "green"
+                },
+                "0": {
+                  "text": "FORA DE SYNC",
+                  "color": "red"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name",
+        "orientation": "vertical"
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Sessões ativas — PA × FG (o X da virada)",
+      "description": "Critério 'Tráfego' da aba 08 do Plano de Virada: as curvas se cruzando mostram o tráfego migrando do PA para o FG.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 14,
+        "x": 10,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"sessions\" and r._field == \"num_active\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> filter(fn: (r) => r.ha_state == \"active\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_system_resources\" and r._field == \"session_count\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA sessões ativas"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG sessões ativas"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "CPS / setup rate — PA × FG",
+      "description": "",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 10,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"sessions\" and r._field == \"cps\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> filter(fn: (r) => r.ha_state == \"active\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_system_resources\" and r._field == \"session_setup_rate\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA cps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG setup rate"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "2 · VPNs (abas 01/03/09 do Plano de Virada)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "IPsec ativos — PA (baseline 57)",
+      "description": "pa_capacity VPN_IPSEC_TUNNELS (show vpn flow). Baseline do Plano: 57 SAs UP. Fonte de verdade alternativa: mig_pa_baseline (painel ao lado).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_cap}\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"pa_capacity\" and r._field == \"current_usage\")\n  |> filter(fn: (r) => r.usage_type == \"VPN_IPSEC_TUNNELS\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> last()\n  |> max()\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "green",
+                "value": 57
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Baseline PA (pa-baseline)",
+      "description": "ipsec_sa_up medido pelo fwaudit pa-baseline (show vpn ipsec-sa) — evidência 'antes' da aba 09.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"mig_pa_baseline\" and r._field == \"ipsec_sa_up\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> last()\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Túneis UP — FG",
+      "description": "fg_vpn_summary.tunnels_up somado nos VDOMs. Verde quando alcança o baseline de 57.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_summary\" and r._field == \"tunnels_up\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.vdom =~ /^${vdom:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> last()\n  |> group()\n  |> sum()\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 57
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "7 VPNs InfraBase — de-para do Plano",
+      "description": "De-para (aba 01): VPN-TKS_GCP_Prod←VPN-TKS_GCP_PRD · VPN_TESP03_P1←VPN-TECE1_to_TESP03_Phase1 · VPN_TESP05_P1←TESP05 · VPN_TESP1_CLD/TRD←TESP1-Cloud/Trad · VPN_TESP6←S2S-TESP6-P1 · VPN_TESP7←TECE01_to_TESP7. Baseline: 3 estavam UNKNOWN no plano.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -15m)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\")\n  |> filter(fn: (r) => r.phase1 =~ /^(VPN-TKS_GCP_Prod|VPN_TESP03_P1|VPN_TESP05_P1|VPN_TESP1_CLD|VPN_TESP1_TRD|VPN_TESP6|VPN_TESP7)$/)\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"phase1\", \"hostname\", \"vdom\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"phase1\", \"hostname\", \"vdom\", \"up\", \"p2_up\", \"p2_total\", \"incoming_bytes\", \"outgoing_bytes\"])\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "✅ UP",
+                  "color": "green"
+                },
+                "0": {
+                  "text": "❌ DOWN",
+                  "color": "red"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "up"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "up"
+          }
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Túneis clientes CBL3SH — Phase1/Phase2",
+      "description": "Validação de clientes da aba 03/04 (diagnose vpn ike gateway / tunnel list). p2_up < p2_total = Phase2 parcial.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -15m)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\")\n  |> filter(fn: (r) => r.phase1 =~ /CBL3SH/)\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"phase1\", \"hostname\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"phase1\", \"hostname\", \"up\", \"p2_up\", \"p2_total\"])\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "✅ UP",
+                  "color": "green"
+                },
+                "0": {
+                  "text": "❌ DOWN",
+                  "color": "red"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Túneis FG DOWN agora",
+      "description": "Qualquer linha aqui durante a janela é ação imediata.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\" and r._field == \"up\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.vdom =~ /^${vdom:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> last()\n  |> filter(fn: (r) => r._value == 0)\n  |> keep(columns: [\"phase1\", \"hostname\", \"vdom\", \"_value\"])\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Túneis UP no tempo — PA × FG",
+      "description": "",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_cap}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"pa_capacity\" and r._field == \"current_usage\")\n  |> filter(fn: (r) => r.usage_type == \"VPN_IPSEC_TUNNELS\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_summary\" and r._field == \"tunnels_up\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.vdom =~ /^${vdom:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)\n  |> group(columns: [\"_time\"])\n  |> sum()\n  |> group()\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA túneis"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG túneis UP"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "3 · Tráfego e recursos — PA × FG",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Tráfego WAN — PA (ae1) × FG ($fg_wan)",
+      "description": "Saída (TX) da WAN. Ajuste $fg_wan quando souber o nome da interface WAN no FG.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"interface_stats\" and r._field == \"obytes\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> filter(fn: (r) => r.interface == \"ae1\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> map(fn: (r) => ({r with _value: r._value * 8.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_interface_stats\" and r._field == \"tx_bytes\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.interface =~ /${fg_wan:regex}/)\n  |> derivative(unit: 1s, nonNegative: true)\n  |> map(fn: (r) => ({r with _value: r._value * 8.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "bps"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA ae1 out"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG out"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "CPU — PA (dataplane) × FG",
+      "description": "FG é VM nova — dimensionamento nunca visto com tráfego real (risco A18 da auditoria).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 30
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"system_resources\" and r._field == \"cpu_dp_avg_percent\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_system_resources\" and r._field == \"cpu_pct\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent",
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA CPU dp"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG CPU"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Memória — PA × FG",
+      "description": "",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 30
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"system_resources\" and r._field == \"memory_percent\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_system_resources\" and r._field == \"mem_pct\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent",
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA mem"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG mem"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Erros de interface — PA × FG",
+      "description": "Erro crescendo depois de mover VLAN = duplex/LACP/fibra. Séries em zero ficam achatadas no fundo.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"interface_stats\" and r._field == \"ierrors\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_interface_stats\" and r._field == \"rx_errors\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA ierrors"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG rx_errors"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Packet buffer PA (pressão na saída)",
+      "description": "Se o PA aliviar e o FG sofrer, compare com a CPU FG ao lado.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"system_resources\" and r._field == \"packet_buffer_percent\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent",
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA packet buffer"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "4 · Rotas e ARP — evidências da aba 09",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Rotas estáticas — PA × FG",
+      "description": "PA tem 130 rotas estáticas (41 Infrabase + 89 External_Clients). O FG precisa convergir para o mesmo número — gap = clientes fora.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_cap}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"pa_capacity\" and r._field == \"current_usage\")\n  |> filter(fn: (r) => r.usage_type == \"STATIC_ROUTES\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_route_count\" and r._field == \"static\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.vdom =~ /^${vdom:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)\n  |> group(columns: [\"_time\"])\n  |> sum()\n  |> group()\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA rotas"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG rotas estáticas"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Entradas ARP — PA × FG",
+      "description": "Na virada o ARP deve DESCER no PA e SUBIR no FG conforme as VLANs mudam de lado. FG estagnado = VLAN não chegou.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_cap}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"pa_capacity\" and r._field == \"current_usage\")\n  |> filter(fn: (r) => r.usage_type == \"ARP_ENTRIES\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_arp_count\" and r._field == \"total\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.vdom =~ /^${vdom:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)\n  |> group(columns: [\"_time\"])\n  |> sum()\n  |> group()\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "PA ARP"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF780A"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "FG ARP"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "5 · Paridade de configuração (fwaudit compare)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "panels": []
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "Gaps por categoria — C01..C12",
+      "description": "Última execução do fwaudit compare (--influx). Detalhe nominal de cada gap: gaps.md no out/ da dev-redes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 53
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"category\", \"pa_count\", \"fg_count\", \"matched\", \"missing_fg\", \"extra_fg\", \"sev_max\"])\n  |> sort(columns: [\"missing_fg\"], desc: true)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "missing_fg"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 25,
+      "type": "bargauge",
+      "title": "VIPs Check_MK no FG (46 obrigatórios)",
+      "description": "A10/C02: DNATs do Check_MK que já existem como VIP no FG. <100% na virada = monitoramento cego de parte do site.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 5,
+        "x": 14,
+        "y": 53
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\" and r.category == \"vips\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> filter(fn: (r) => r._field == \"matched\" or r._field == \"pa_count\")\n  |> last()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_value: 100.0 * float(v: r.matched) / float(v: r.pa_count), _field: \"vips_pct\"}))\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "green",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "% policies FG com log",
+      "description": "C07 — anti FC-1: o FortiConverter desliga logtraffic em ~100% das policies. Menos que 100% aqui = SIEM/FAZ cegos.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 5,
+        "x": 19,
+        "y": 53
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\" and r.category == \"logtraffic\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> filter(fn: (r) => r._field == \"matched\" or r._field == \"fg_count\")\n  |> last()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_value: if r.fg_count == 0 then 0.0 else 100.0 * float(v: r.matched) / float(v: r.fg_count)}))\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 95
+              },
+              {
+                "color": "green",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 27,
+      "type": "row",
+      "title": "6 · Congelamento de config e saúde dos pipelines",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "panels": []
+    },
+    {
+      "id": 28,
+      "type": "table",
+      "title": "Mudanças no PA durante o freeze (exceto $silenciados)",
+      "description": "Atividade 2.5.2 (freezer): mudança humana no PA durante a janela é desvio. Fonte: pa_config_change (palo-collector).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 63
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_aud}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"pa_config_change\" and r._field == \"object_name\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> filter(fn: (r) => r.admin !~ /^${silenciados:regex}$/)\n  |> keep(columns: [\"_time\", \"device\", \"admin\", \"cmd\", \"object_type\", \"risk\", \"_value\"])\n  |> rename(columns: {_value: \"objeto\"})\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 100)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "string"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "risk"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "HIGH": {
+                        "text": "HIGH",
+                        "color": "red"
+                      },
+                      "MEDIUM": {
+                        "text": "MEDIUM",
+                        "color": "yellow"
+                      },
+                      "LOW": {
+                        "text": "LOW",
+                        "color": "text"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Último ponto PA (prova de vida)",
+      "description": "Segundos desde o último ponto do palo-collector. Painel-padrão de prova de vida (Auditoria-Mudancas-Palo).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 14,
+        "y": 63
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"sessions\" and r._field == \"num_active\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> group(columns: [\"hostname\"])\n  |> last()\n  |> map(fn: (r) => ({hostname: r.hostname, _value: (float(v: uint(v: now())) - float(v: uint(v: r._time))) / 1000000000.0}))\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name",
+        "orientation": "vertical"
+      }
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "Último ponto FG (prova de vida)",
+      "description": "Segundos desde o último ciclo do fgpoller.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 19,
+        "y": 63
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"fg_collector_health\" and r._field == \"ok\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> group(columns: [\"hostname\"])\n  |> last()\n  |> map(fn: (r) => ({hostname: r.hostname, _value: (float(v: uint(v: now())) - float(v: uint(v: r._time))) / 1000000000.0}))\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name",
+        "orientation": "vertical"
+      }
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Ciclos fgpoller com endpoint falhando (6h)",
+      "description": "Métrica errada é pior que ausente: investigue antes de confiar nos painéis FG.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efcqeppjazvgga"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 10,
+        "x": 14,
+        "y": 68
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"fg_collector_health\" and r._field == \"endpoints_failed\")\n  |> filter(fn: (r) => r._value > 0)\n  |> keep(columns: [\"_time\", \"hostname\", \"_value\"])\n  |> rename(columns: {_value: \"endpoints_falhando\"})\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 20)\n",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efcqeppjazvgga"
+          },
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}

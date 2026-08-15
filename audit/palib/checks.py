@@ -707,8 +707,12 @@ def check_a23_tcp_mss(inv):
         for sub in spec["subifs"]:
             if sub.get("mss_adjust"):
                 try:
+                    # No PAN-OS o ipv4-mss-adjustment é o desconto TOTAL sobre
+                    # o MTU (default 40 = IP+TCP): MSS efetivo = MTU - ajuste.
+                    # No FG o tcp-mss é absoluto → mesmo valor, sem subtrair 40
+                    # de novo.
                     mtu = int(sub.get("mtu") or 1500)
-                    sugerido = mtu - int(sub["mss_adjust"]) - 40
+                    sugerido = mtu - int(sub["mss_adjust"])
                 except ValueError:
                     sugerido = ""
                 itens.append({"interface": sub["name"], "vlan": sub["vlan"],
@@ -724,8 +728,9 @@ def check_a23_tcp_mss(inv):
                    "interfaces do FG, o handshake fecha e a transferência trava "
                    "(PMTUD blackhole) — sessão 'abre e dá timeout', exatamente o "
                    "sintoma visto na primeira tentativa de virada. No PAN-OS o "
-                   "valor é um AJUSTE (desconto do MTU); no FG é absoluto — coluna "
-                   "tcp_mss_fg_sugerido = mtu - ajuste - 40." % len(itens)),
+                   "valor é o desconto total sobre o MTU (MSS efetivo = MTU - "
+                   "ajuste); no FG o tcp-mss é absoluto — coluna "
+                   "tcp_mss_fg_sugerido = mtu - ajuste." % len(itens)),
         "itens": itens,
     }
 

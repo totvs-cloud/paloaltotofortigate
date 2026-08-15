@@ -31,7 +31,8 @@ class Checks(unittest.TestCase):
         item = itens[0]
         self.assertEqual(item["interface"], "ae1.100")
         self.assertEqual(item["mss_adjust_pa"], "168")
-        self.assertEqual(item["tcp_mss_fg_sugerido"], 1500 - 168 - 40)
+        # ajuste do PAN-OS já inclui os 40 de headers: MSS = MTU - ajuste
+        self.assertEqual(item["tcp_mss_fg_sugerido"], 1500 - 168)
 
     def test_a01_edl(self):
         self.assertEqual([i["regra"] for i in self.itens("A01")], ["deny-edl-topo"])

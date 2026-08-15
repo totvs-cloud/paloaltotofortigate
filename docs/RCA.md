@@ -10,7 +10,7 @@
 | `fg-logs` | Logs de evento do FortiOS (system/HA/VPN/user/router) + **revisões de config** (quem salvou o quê, quando) | O que aconteceu nos clusters durante a janela |
 | `pa-logs` | Config log + system log do PA na janela (job assíncrono) | O que mudou/alarmou no PA durante a janela e o rollback |
 | `rca` | **Linha do tempo unificada** PA+FG da janela | O documento-base do RCA |
-| `offline` (A23 novo) | Interfaces do PA com clamp de **TCP-MSS** e o valor a replicar | O "sessão abre e trava" — TECE1 tem clamp nas DUAS WANs (ae1.2906/2910 → tcp-mss 1292) |
+| `offline` (A23 novo) | Interfaces do PA com clamp de **TCP-MSS** e o valor a replicar | O "sessão abre e trava" — TECE1 tem clamp nas DUAS WANs (ae1.2906/2910 → tcp-mss 1332) |
 | `compare` (C13–C17 novos) | MSS, **trânsito entre os 2 clusters**, TODOS os DNATs→VIP, **default route/gateway por lado**, PBF→policy routes | As 5 causas prováveis do sintoma da janela |
 
 ## Execução (bloco único — ajuste a janela da virada em START/END)

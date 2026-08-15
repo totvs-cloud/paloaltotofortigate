@@ -1,5 +1,10 @@
 # HANDOFF — validação pré-virada PA→FG no TECE1 (rodar na dev-redes do TECE)
 
+> **15/08: a 1ª tentativa de virada falhou (pouco retorno + sessões timeout) e
+> houve rollback. Antes de reagendar, execute `docs/RCA.md` — coleta de logs
+> dos dois lados, timeline da janela e os checks novos C13–C17/A23 que cobrem
+> as causas prováveis (TCP-MSS, trânsito entre clusters, default route, DNATs).**
+
 > Abra este arquivo no Claude Code da dev-redes e siga na ordem. Ele contém o
 > contexto inteiro: o que já foi feito, o que executar aqui, como ler o
 > resultado e o que NÃO fazer.

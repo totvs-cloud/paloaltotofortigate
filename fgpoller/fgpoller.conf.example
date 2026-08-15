@@ -22,7 +22,9 @@ hourly = 3600
 host = 172.18.252.142
 user = max.ferreira
 pass_env = FG_TECE1_PASS
-site = TECE1
+# site TEM que ser IGUAL à tag site do palo-collector local, senão os painéis
+# FG do dashboard ficam vazios: grep -A3 tags /opt/palo-collector/configs/firewalls.yaml
+site = TECE01
 vdoms = root
 enabled = true
 
@@ -31,7 +33,9 @@ enabled = true
 host = 172.18.252.144
 user = max.ferreira
 pass_env = FG_TECE1_PASS
-site = TECE1
+# site TEM que ser IGUAL à tag site do palo-collector local, senão os painéis
+# FG do dashboard ficam vazios: grep -A3 tags /opt/palo-collector/configs/firewalls.yaml
+site = TECE01
 vdoms = root
 enabled = true
 

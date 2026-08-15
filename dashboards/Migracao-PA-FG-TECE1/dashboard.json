@@ -1752,7 +1752,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"category\", \"pa_count\", \"fg_count\", \"matched\", \"missing_fg\", \"extra_fg\", \"sev_max\"])\n  |> sort(columns: [\"missing_fg\"], desc: true)\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"category\", \"pa_count\", \"fg_count\", \"matched\", \"missing_fg\", \"extra_fg\", \"sev_max\"])\n  |> sort(columns: [\"missing_fg\"], desc: true)\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -1821,7 +1821,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\" and r.category == \"vips\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> filter(fn: (r) => r._field == \"matched\" or r._field == \"pa_count\")\n  |> last()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_value: 100.0 * float(v: r.matched) / float(v: r.pa_count), _field: \"vips_pct\"}))\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\" and r.category == \"vips\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> filter(fn: (r) => r._field == \"matched\" or r._field == \"pa_count\")\n  |> last()\n  |> group()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_value: 100.0 * float(v: r.matched) / float(v: r.pa_count), _field: \"vips_pct\"}))\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -1882,7 +1882,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\" and r.category == \"logtraffic\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> filter(fn: (r) => r._field == \"matched\" or r._field == \"fg_count\")\n  |> last()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_value: if r.fg_count == 0 then 0.0 else 100.0 * float(v: r.matched) / float(v: r.fg_count)}))\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"mig_audit\" and r.category == \"logtraffic\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> filter(fn: (r) => r._field == \"matched\" or r._field == \"fg_count\")\n  |> last()\n  |> group()\n  |> pivot(rowKey: [\"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_value: if r.fg_count == 0 then 0.0 else 100.0 * float(v: r.matched) / float(v: r.fg_count)}))\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"

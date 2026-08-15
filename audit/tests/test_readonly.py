@@ -59,17 +59,21 @@ class AssertReadOnlyPA(unittest.TestCase):
 
 
 class AssertReadOnlyFG(unittest.TestCase):
-    def test_get_monitor_e_cmdb_passam(self):
+    def test_get_monitor_cmdb_e_log_passam(self):
         assert_fg_read_only("GET", "api/v2/monitor/system/status")
         assert_fg_read_only("GET", "/api/v2/cmdb/firewall/policy")
+        assert_fg_read_only("GET", "api/v2/log/memory/event/system")
+        assert_fg_read_only("GET", "api/v2/log/disk/event/ha")
 
     def test_metodos_de_escrita_bloqueiam(self):
         for method in ("POST", "PUT", "DELETE", "PATCH"):
             with self.assertRaises(SystemExit):
                 assert_fg_read_only(method, "api/v2/monitor/system/status")
+            with self.assertRaises(SystemExit):
+                assert_fg_read_only(method, "api/v2/log/memory/event/system")
 
     def test_paths_fora_do_prefixo_bloqueiam(self):
-        for path in ("api/v2/cmdb", "logincheck", "api/v2/log/memory",
+        for path in ("api/v2/cmdb", "logincheck", "api/v2/log",
                      "api/v2/monitor-x/system", "jsonrpc"):
             with self.assertRaises(SystemExit):
                 assert_fg_read_only("GET", path)
@@ -93,11 +97,12 @@ class FortiClientAuth(unittest.TestCase):
     def test_modo_token_respeita_trava(self):
         from palib.fgclient import FortiClient
         client = FortiClient("192.0.2.1", token="x", dry_run=True)
-        # path fora de monitor/cmdb aborta ANTES de qualquer rede (mesmo dry-run)
+        # path fora de monitor/cmdb/log aborta ANTES de qualquer rede (mesmo dry-run)
         with self.assertRaises(SystemExit):
             client.get("logincheck")
         with self.assertRaises(SystemExit):
-            client.get("api/v2/log/memory")
+            client.get("api/v2/backup")
+        self.assertIsNone(client.get("log/memory/event/system"))  # log é leitura
 
     def test_modo_sessao_respeita_trava(self):
         from palib.fgclient import FortiClient

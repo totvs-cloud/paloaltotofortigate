@@ -87,6 +87,7 @@
                     <tag>100</tag>
                     <ip><entry name="198.51.100.1/29"/></ip>
                     <comment>WAN fixture</comment>
+                    <adjust-tcp-mss><enable>yes</enable><ipv4-mss-adjustment>168</ipv4-mss-adjustment></adjust-tcp-mss>
                   </entry>
                   <entry name="ae1.200">
                     <tag>200</tag>
@@ -280,6 +281,16 @@
                 </entry>
               </rules>
             </nat>
+            <pbf>
+              <rules>
+                <entry name="pbf-forca-tunel">
+                  <from><zone><member>Z-WAN</member></zone></from>
+                  <source><member>any</member></source>
+                  <destination><member>HST-10.9.9.9</member></destination>
+                  <action><forward><egress-interface>tunnel.1</egress-interface><nexthop><ip-address>10.1.0.254</ip-address></nexthop></forward></action>
+                </entry>
+              </rules>
+            </pbf>
           </rulebase>
           <log-settings>
             <profiles><entry name="FWD_TEST"/></profiles>

@@ -28,6 +28,8 @@ CMDB_VDOM = [
     "system/snmp/community",
     "system/dns",
     "system/ntp",
+    "router/policy",            # PBF do PA vira policy route aqui (C17)
+    "system/interface",         # por vdom também: tcp-mss/allowaccess (C13)
 ]
 
 # cmdb de escopo global (uma vez)
@@ -54,6 +56,7 @@ MONITOR_GLOBAL = [
     "system/ha-statistics",
     "system/ha-checksums",
     "license/status",
+    "system/config-revision",   # quem salvou config e quando (RCA)
 ]
 
 

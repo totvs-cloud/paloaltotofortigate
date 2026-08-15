@@ -144,6 +144,26 @@ class Compare(unittest.TestCase):
         self.assertNotIn("syslog", faltando)        # syslog OK
         self.assertIn("dns", faltando)              # dns/ntp/snmp ausentes
 
+    def test_c13_mss_faltando(self):
+        r = self.by_id["C13"]
+        # ae1.100 tem clamp no PA; a vlan_100 do FG existe mas SEM tcp-mss
+        self.assertEqual(r["pa_count"], 1)
+        self.assertEqual(r["matched"], 0)
+        self.assertIn("ae1.100", " ".join(r["missing_fg"]))
+        self.assertIn("SEM tcp-mss", " ".join(r["missing_fg"]))
+
+    def test_c16_default_route(self):
+        r = self.by_id["C16"]
+        # default do VR Externo_Infrabase via 198.51.100.6; FG sem default
+        self.assertEqual(r["pa_count"], 1)
+        self.assertEqual(r["matched"], 0)
+        self.assertIn("198.51.100.6", " ".join(r["missing_fg"]))
+
+    def test_c17_pbf(self):
+        r = self.by_id["C17"]
+        self.assertEqual(r["pa_count"], 1)
+        self.assertIn("pbf-forca-tunel", " ".join(r["missing_fg"]))
+
 
 class TwoClusters(unittest.TestCase):
     """Topologia real do TECE1: vsys1→cluster INFRABASE, vsys2→cluster CLIENTE,

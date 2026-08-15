@@ -54,3 +54,30 @@ class Firewall(object):
             sys.exit("PA %s respondeu status=%s em %s: %s"
                      % (self.host, root.get("status"), label, mask_key(msg)[:300]))
         return root, data
+
+    def run_log_job(self, params, label, poll_interval=2.0, attempts=15):
+        """Consulta de log no PAN-OS é assíncrona: submete, recebe job id, poleia.
+
+        Mesma mecânica do pa-forense/palo-collector (logjob.go), inclusive o
+        detalhe de aceitar os DOIS sinais de término — progress=100 ou o job
+        reportando FIN. A trava de leitura vale igual (type=log).
+        """
+        import time
+        root, _raw = self.get(params, label + "-submit")
+        if root is None:      # dry-run
+            return None, b""
+        job_el = root.find("./result/job")
+        if job_el is None or not (job_el.text or "").strip():
+            sys.exit("PA %s: %s não devolveu job id" % (self.host, label))
+        job_id = job_el.text.strip()
+        for _ in range(attempts):
+            time.sleep(poll_interval)
+            root, raw = self.get({"type": "log", "action": "get",
+                                  "job-id": job_id}, label + "-poll")
+            logs = root.find("./result/log/logs")
+            status = root.findtext("./result/job/status", "")
+            if (logs is not None and logs.get("progress") == "100") or \
+                    status == "FIN":
+                return root, raw
+        sys.exit("PA %s: job %s de %s não terminou em %ds"
+                 % (self.host, job_id, label, int(attempts * poll_interval)))

@@ -23,7 +23,15 @@ class Checks(unittest.TestCase):
         return self.by_id[cid]["itens"]
 
     def test_todos_os_checks_rodaram(self):
-        self.assertEqual(len(self.by_id), 22)
+        self.assertEqual(len(self.by_id), 23)
+
+    def test_a23_mss(self):
+        itens = self.itens("A23")
+        self.assertEqual(len(itens), 1)
+        item = itens[0]
+        self.assertEqual(item["interface"], "ae1.100")
+        self.assertEqual(item["mss_adjust_pa"], "168")
+        self.assertEqual(item["tcp_mss_fg_sugerido"], 1500 - 168 - 40)
 
     def test_a01_edl(self):
         self.assertEqual([i["regra"] for i in self.itens("A01")], ["deny-edl-topo"])

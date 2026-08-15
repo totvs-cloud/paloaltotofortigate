@@ -130,6 +130,80 @@ def cmd_compare(args):
         print("  paridade publicada no bucket %s (mig_audit)" % writer.bucket)
 
 
+def _make_fg_client(args):
+    from palib.fgclient import FortiClient
+    if args.token_env:
+        return FortiClient(args.host, token=env_secret(args.token_env,
+                                                       "token de API do FG"),
+                           verify=args.verify, throttle=args.throttle,
+                           dry_run=args.dry_run)
+    if args.user and args.pass_env:
+        return FortiClient(args.host, username=args.user,
+                           password=env_secret(args.pass_env, "senha do admin FG"),
+                           verify=args.verify, throttle=args.throttle,
+                           dry_run=args.dry_run)
+    sys.exit("informe --token-env OU --user + --pass-env")
+
+
+def cmd_fg_logs(args):
+    from palib import logs
+    import time as _t
+    client = _make_fg_client(args)
+    stamp = _t.strftime("%Y-%m-%d_%H%M")
+    outdir = os.path.join(args.out, stamp, "fg-logs-%s" % (args.hostname or args.host))
+    try:
+        eventos = logs.fg_fetch_logs(client, outdir,
+                                     vdoms=[v.strip() for v in args.vdoms.split(",")],
+                                     rows=args.rows)
+    finally:
+        client.logout()
+    if not args.dry_run:
+        print("fg-logs: %d eventos → %s" % (len(eventos), outdir))
+
+
+def cmd_pa_logs(args):
+    from palib.paclient import Firewall
+    from palib import logs
+    import time as _t
+    key = env_secret(args.key_env, "chave de API do PA")
+    fw = Firewall(args.host, key, verify=args.verify, dry_run=args.dry_run)
+    stamp = _t.strftime("%Y-%m-%d_%H%M")
+    outdir = os.path.join(args.out, stamp, "pa-logs-%s" % (args.hostname or args.host))
+    eventos = logs.pa_fetch_logs(fw, args.start, args.end, outdir)
+    if not args.dry_run:
+        print("pa-logs: %d eventos → %s" % (len(eventos), outdir))
+
+
+def cmd_rca(args):
+    """Linha do tempo unificada a partir dos JSONs já coletados (offline)."""
+    import glob
+    import json as _json
+    import time as _t
+    from palib import logs
+    listas = []
+    for pattern in ("pa-logs-*/pa_eventos.json", "fg-logs-*/fg_eventos.json"):
+        for path in glob.glob(os.path.join(args.dir, "*", pattern)) + \
+                glob.glob(os.path.join(args.dir, pattern)):
+            with open(path, "r", encoding="utf-8") as fh:
+                listas.append(_json.load(fh))
+            print("rca: usando %s" % path)
+    if not listas:
+        sys.exit("rca: nenhum pa_eventos.json/fg_eventos.json em %s — rode "
+                 "pa-logs e fg-logs antes" % args.dir)
+    timeline = logs.build_timeline(listas, start=args.start, end=args.end)
+    notas = []
+    if args.nota:
+        notas.extend(args.nota)
+    md = logs.render_timeline_md(timeline, args.start, args.end, notas)
+    stamp = _t.strftime("%Y-%m-%d_%H%M")
+    outdir = os.path.join(args.dir, stamp)
+    os.makedirs(outdir, exist_ok=True)
+    out_path = os.path.join(outdir, "rca-timeline.md")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write(md)
+    print("rca: %d eventos na janela → %s" % (len(timeline), out_path))
+
+
 def cmd_checks(_args):
     root_stub = None  # apenas listagem — não precisa de snapshot
     print("Checks offline (Fase A):")
@@ -188,6 +262,42 @@ def main(argv=None):
     p.add_argument("--site", default="TECE1")
     p.add_argument("--influx", action="store_true", help="publica contadores (mig_audit)")
     p.set_defaults(func=cmd_compare)
+
+    def _fg_auth_args(p):
+        p.add_argument("--host", required=True)
+        p.add_argument("--token-env", help="NOME da env var com o token de API")
+        p.add_argument("--user", help="admin p/ login por sessão")
+        p.add_argument("--pass-env", help="NOME da env var com a senha")
+        p.add_argument("--hostname", default="", help="rótulo (default: host)")
+        p.add_argument("--throttle", type=float, default=0.3)
+        p.add_argument("--verify", action="store_true")
+        p.add_argument("--dry-run", action="store_true")
+
+    p = sub.add_parser("fg-logs", help="RCA: logs de evento + revisões de config do FG")
+    _fg_auth_args(p)
+    p.add_argument("--vdoms", default="root")
+    p.add_argument("--rows", type=int, default=2000, help="máx. entradas por categoria")
+    p.add_argument("--out", default="out")
+    p.set_defaults(func=cmd_fg_logs)
+
+    p = sub.add_parser("pa-logs", help="RCA: config+system log do PA na janela")
+    p.add_argument("--host", required=True)
+    p.add_argument("--key-env", required=True, help="NOME da env var com a chave")
+    p.add_argument("--hostname", default="")
+    p.add_argument("--start", required=True, help="'YYYY/MM/DD HH:MM:SS' (hora do PA)")
+    p.add_argument("--end", required=True, help="'YYYY/MM/DD HH:MM:SS'")
+    p.add_argument("--out", default="out")
+    p.add_argument("--verify", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_pa_logs)
+
+    p = sub.add_parser("rca", help="linha do tempo unificada (usa pa-logs+fg-logs já coletados)")
+    p.add_argument("--dir", default="out", help="onde procurar os *_eventos.json")
+    p.add_argument("--start", help="'YYYY/MM/DD HH:MM:SS' — corte da janela")
+    p.add_argument("--end", help="'YYYY/MM/DD HH:MM:SS'")
+    p.add_argument("--nota", action="append",
+                   help="anotação manual p/ o topo da timeline (repetível)")
+    p.set_defaults(func=cmd_rca)
 
     p = sub.add_parser("checks", help="lista os checks")
     p.set_defaults(func=cmd_checks)

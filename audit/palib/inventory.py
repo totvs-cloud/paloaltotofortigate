@@ -36,11 +36,17 @@ def parse_interfaces(root):
         subifs = []
         for sub_name, sub in iter_entries(ae, "layer3/units"):
             ips = [ip_name for ip_name, _ in iter_entries(sub, "ip")]
+            # clamp de TCP-MSS: no PAN-OS é AJUSTE (desconto sobre o MTU);
+            # replicar no FG exige tcp-mss absoluto (~MTU - ajuste - 40).
+            mss_on = text(sub, "adjust-tcp-mss/enable") == "yes"
             subifs.append({
                 "name": sub_name,
                 "vlan": text(sub, "tag"),
                 "ips": ips,
                 "comment": text(sub, "comment"),
+                "mss_adjust": text(sub, "adjust-tcp-mss/ipv4-mss-adjustment")
+                              if mss_on else "",
+                "mtu": text(sub, "mtu"),
             })
         phys = [n for n, e in out["ethernet"].items()
                 if e["aggregate_group"] == ae_name]
@@ -352,10 +358,16 @@ def parse_pbf_rules(root, vsys):
     if ventry is None:
         return rules
     for name, r in iter_entries(ventry, "rulebase/pbf/rules"):
+        # PBF do PAN-OS aninha a origem: from/zone/member (ou from/interface)
+        origem = members(r, "from/zone")
+        if origem == ["any"]:
+            origem = members(r, "from/interface")
+        if origem == ["any"]:
+            origem = members(r, "from")
         rules.append({
             "name": name,
             "disabled": text(r, "disabled") == "yes",
-            "from": members(r, "from"),
+            "from": origem,
             "source": members(r, "source"),
             "destination": members(r, "destination"),
             "egress_interface": text(r, "action/forward/egress-interface"),

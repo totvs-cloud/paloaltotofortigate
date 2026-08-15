@@ -497,9 +497,243 @@ def c12_mgmt(inv, fg_map):
         sum(1 for v in achou.values() if v), missing, itens=itens)
 
 
+def _fg_interfaces_all(fg_map):
+    """Interfaces do FG: _global dos 2 clusters + por-vdom (tcp-mss/allowaccess)."""
+    out = list(_fg_globals(fg_map, "cmdb_system_interface"))
+    out.extend(_fg_load_both(fg_map, "cmdb_system_interface"))
+    return out
+
+
+def c13_tcp_mss(inv, fg_map):
+    """Clamp de TCP-MSS do PA replicado no FG (lição da 1ª tentativa de virada)."""
+    fg_ifs = _fg_interfaces_all(fg_map)
+    fg_by_vlan = {}
+    fg_by_ip = {}
+    for i in fg_ifs:
+        if i.get("vlanid"):
+            fg_by_vlan.setdefault(str(i["vlanid"]), []).append(i)
+        ip = i.get("ip", "")
+        if ip and ip != "0.0.0.0 0.0.0.0":
+            fg_by_ip.setdefault(_net(ip), []).append(i)
+
+    def _mss(iface):
+        for key in ("tcp-mss", "tcp_mss"):
+            try:
+                if int(iface.get(key) or 0) > 0:
+                    return int(iface[key])
+            except (TypeError, ValueError):
+                pass
+        return 0
+
+    itens, missing, matched = [], [], 0
+    pa_total = 0
+    for ae, spec in sorted(inv["network"]["interfaces"]["aggregate"].items()):
+        for sub in spec["subifs"]:
+            if not sub.get("mss_adjust"):
+                continue
+            pa_total += 1
+            candidatos = list(fg_by_vlan.get(sub["vlan"], []))
+            for ip in sub["ips"]:
+                candidatos.extend(fg_by_ip.get(_net(ip), []))
+            com_mss = [i for i in candidatos if _mss(i)]
+            if com_mss:
+                matched += 1
+                itens.append({"pa_if": sub["name"], "vlan": sub["vlan"],
+                              "fg_if": com_mss[0].get("name", "?"),
+                              "fg_tcp_mss": _mss(com_mss[0]), "status": "ok"})
+            else:
+                missing.append("%s (vlan %s, ajuste PA %s) — %s" % (
+                    sub["name"], sub["vlan"], sub["mss_adjust"],
+                    "interface FG achada SEM tcp-mss" if candidatos
+                    else "interface FG não encontrada"))
+    return _result(
+        "C13", "tcp_mss", "CRITICO",
+        "Interfaces com clamp de TCP-MSS no PA cuja equivalente FG está sem "
+        "set tcp-mss. Sem o clamp: handshake fecha, transferência trava, "
+        "sessão dá timeout (PMTUD blackhole) — o sintoma da 1ª janela. Valor "
+        "sugerido por interface: relatório A23 da fase offline.",
+        pa_total, len(fg_ifs), matched, missing, itens=itens)
+
+
+def c14_transit(inv, fg_map):
+    """Trânsito entre os DOIS clusters — o inter-vsys que era interno no PA.
+
+    Heurística: cada cluster precisa alcançar (rota estática ou conectada)
+    as redes das subinterfaces que pertenciam ao OUTRO vsys.
+    """
+    vsys_ifaces = {}
+    for side in SIDES:
+        vsys_ifaces[side] = set(inv["meta"]["vsys"].get(side, {})
+                                .get("interfaces", []))
+    subif_nets = {}
+    for ae, spec in inv["network"]["interfaces"]["aggregate"].items():
+        for sub in spec["subifs"]:
+            for ip in sub["ips"]:
+                subif_nets[sub["name"]] = _net(ip)
+
+    itens, missing = [], []
+    matched = pa_total = 0
+    for side in SIDES:
+        outro = "vsys2" if side == "vsys1" else "vsys1"
+        rotulo = _side_tag(fg_map, side)
+        fg_routes = [_net(r.get("dst", ""))
+                     for r in _fg_load(fg_map, side, "cmdb_router_static")]
+        fg_nets = set(fg_routes)
+        alvos = sorted(set(subif_nets[i] for i in vsys_ifaces[outro]
+                           if i in subif_nets))
+        for alvo in alvos:
+            pa_total += 1
+            coberto = alvo in fg_nets
+            if not coberto:
+                try:
+                    alvo_net = ipaddress.ip_network(alvo, strict=False)
+                    for r in fg_routes:
+                        try:
+                            rn = ipaddress.ip_network(r, strict=False)
+                        except ValueError:
+                            continue
+                        if rn.prefixlen > 0 and rn.version == alvo_net.version \
+                                and alvo_net.network_address >= rn.network_address \
+                                and alvo_net.broadcast_address <= rn.broadcast_address:
+                            coberto = True
+                            break
+                except ValueError:
+                    pass
+            if coberto:
+                matched += 1
+            else:
+                missing.append("%s sem rota para %s (rede do lado %s)"
+                               % (rotulo, alvo, SIDE_LABEL[outro]))
+        itens.append({"lado": rotulo, "redes_do_outro_lado": len(alvos),
+                      "sem_rota": sum(1 for m in missing
+                                      if m.startswith(rotulo))})
+    return _result(
+        "C14", "transit", "CRITICO",
+        "No PA o tráfego CLIENTE↔INFRABASE era interno (inter-vsys); agora "
+        "atravessa o core entre DOIS clusters e exige rota estática dos dois "
+        "lados (Ponto de Design Crítico do projeto). Rede do outro lado sem "
+        "rota = fluxo half-open/timeout — visto na 1ª janela. Heurística por "
+        "redes conectadas; default route NÃO conta como cobertura.",
+        pa_total, 0, matched, missing, itens=itens)
+
+
+def c15_all_dnat_vips(inv, fg_map):
+    """TODOS os DNATs do PA (não só Check_MK) presentes como vip no FG."""
+    from .checks import _resolve_members
+    fg_vips = _fg_load_both(fg_map, "cmdb_firewall_vip")
+    fg_pairs = set()
+    for v in fg_vips:
+        ext = _net(v.get("extip", ""))
+        mr = v.get("mappedip")
+        mapped = ""
+        if isinstance(mr, list) and mr:
+            mapped = _net(mr[0].get("range", "")) if isinstance(mr[0], dict) \
+                else _net(mr[0])
+        fg_pairs.add((ext, mapped))
+        fg_pairs.add((ext, ""))       # tolera mappedip divergente: casa só o extip
+
+    missing, matched = [], 0
+    pa_total = 0
+    for side in SIDES:
+        for r in inv[side]["nat_rules"]:
+            if not r["dnat_address"] or r["disabled"]:
+                continue
+            pa_total += 1
+            dsts = [d for d in r["destination"] if d != "any"]
+            dsts.extend(_resolve_members(inv, side, r["destination"]))
+            achou = False
+            for dst in dsts:
+                ext = _net(dst)
+                if (ext, _net(r["dnat_address"])) in fg_pairs or \
+                        (ext, "") in fg_pairs:
+                    achou = True
+                    break
+            if achou:
+                matched += 1
+            else:
+                missing.append("%s: %s (%s → %s)" % (
+                    side, r["name"], ", ".join(r["destination"])[:60],
+                    r["dnat_address"]))
+    return _result(
+        "C15", "dnat_all", "ALTO",
+        "TODOS os DNATs ativos do PA (%d) cobertos por firewall vip em algum "
+        "cluster — generaliza o C02 (que olha só os do Check_MK). DNAT sem "
+        "VIP = serviço publicado morto na virada." % pa_total,
+        pa_total, len(fg_vips), matched, missing)
+
+
+def c16_default_route(inv, fg_map):
+    """Default route e gateway WAN por lado — errado aqui, nada mais importa."""
+    itens, missing = [], []
+    matched = pa_total = 0
+    for vr, side in sorted(VR_SIDE_MAP.items()):
+        rotulo = _side_tag(fg_map, side)
+        pa_def = [r for r in inv["network"]["static_routes"].get(vr, [])
+                  if _net(r["destination"]) == "0.0.0.0/0"]
+        fg_def = [r for r in _fg_load(fg_map, side, "cmdb_router_static")
+                  if _net(r.get("dst", "0.0.0.0/0")) == "0.0.0.0/0"
+                  or not r.get("dst")]
+        for pr in pa_def:
+            pa_total += 1
+            gw_pa = pr["nexthop_ip"]
+            achou = [f for f in fg_def if f.get("gateway") == gw_pa]
+            if achou:
+                matched += 1
+                itens.append({"lado": rotulo, "gw_pa": gw_pa,
+                              "gw_fg": achou[0].get("gateway"),
+                              "device_fg": achou[0].get("device", ""),
+                              "status": "ok"})
+            else:
+                outros = ", ".join(sorted(set(f.get("gateway", "?")
+                                              for f in fg_def))) or "NENHUMA"
+                missing.append("%s: default do PA via %s; no FG: %s"
+                               % (rotulo, gw_pa, outros))
+        if not pa_def:
+            itens.append({"lado": rotulo, "gw_pa": "(sem default no VR)",
+                          "gw_fg": "-", "device_fg": "-", "status": "info"})
+    return _result(
+        "C16", "default_route", "CRITICO",
+        "Default route por lado: mesmo gateway do PA? Divergência aqui explica "
+        "'pouco tráfego voltando' sozinha (retorno saindo pela operadora "
+        "errada / bloco IP errado).",
+        pa_total, 0, matched, missing, itens=itens)
+
+
+def c17_pbf(inv, fg_map):
+    """PBF do PA → policy routes (router/policy) no FG."""
+    itens, missing = [], []
+    matched = pa_total = 0
+    for side in SIDES:
+        rotulo = _side_tag(fg_map, side)
+        pa_pbf = [r for r in inv[side]["pbf_rules"] if not r["disabled"]]
+        fg_pol = _fg_load(fg_map, side, "cmdb_router_policy")
+        fg_gws = set(p.get("gateway", "") for p in fg_pol)
+        for r in pa_pbf:
+            pa_total += 1
+            if r["nexthop"] and r["nexthop"] in fg_gws:
+                matched += 1
+            elif not fg_pol:
+                missing.append("%s: PBF '%s' (nexthop %s) — nenhuma policy "
+                               "route no FG" % (rotulo, r["name"],
+                                                r["nexthop"] or r["egress_interface"]))
+            else:
+                missing.append("%s: PBF '%s' sem policy route com nexthop %s"
+                               % (rotulo, r["name"], r["nexthop"] or "?"))
+        itens.append({"lado": rotulo, "pbf_pa": len(pa_pbf),
+                      "policy_routes_fg": len(fg_pol)})
+    return _result(
+        "C17", "pbf", "ALTO",
+        "Regras PBF ativas do PA vs router/policy no FG (match por nexthop). "
+        "O Plano de Virada valida PBF explicitamente (aba 03: disable → rota "
+        "172.22.66.176 → enable).",
+        pa_total, 0, matched, missing, itens=itens)
+
+
 ALL_COMPARES = [c01_routes, c02_vips_checkmk, c03_vpns, c04_interfaces,
                 c05_zones, c06_policies, c07_logtraffic, c08_utm, c09_objects,
-                c10_edls, c11_snat, c12_mgmt]
+                c10_edls, c11_snat, c12_mgmt,
+                c13_tcp_mss, c14_transit, c15_all_dnat_vips,
+                c16_default_route, c17_pbf]
 
 
 # ---------------------------------------------------------------------------

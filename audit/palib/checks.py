@@ -701,6 +701,35 @@ def check_a22_vpn_reconcile(inv):
     }
 
 
+def check_a23_tcp_mss(inv):
+    itens = []
+    for ae, spec in sorted(inv["network"]["interfaces"]["aggregate"].items()):
+        for sub in spec["subifs"]:
+            if sub.get("mss_adjust"):
+                try:
+                    mtu = int(sub.get("mtu") or 1500)
+                    sugerido = mtu - int(sub["mss_adjust"]) - 40
+                except ValueError:
+                    sugerido = ""
+                itens.append({"interface": sub["name"], "vlan": sub["vlan"],
+                              "mss_adjust_pa": sub["mss_adjust"],
+                              "mtu": sub.get("mtu") or "1500 (default)",
+                              "tcp_mss_fg_sugerido": sugerido,
+                              "comment": sub["comment"], "lag": ae})
+    return {
+        "id": "A23", "titulo": "Interfaces do PA com clamp de TCP-MSS (replicar no FG)",
+        "severidade": CRITICO, "classe_fc": "-",
+        "resumo": ("%d subinterfaces do PA fazem clamp de TCP-MSS (adjust-tcp-mss). "
+                   "O conversor NÃO carrega isso; sem set tcp-mss equivalente nas "
+                   "interfaces do FG, o handshake fecha e a transferência trava "
+                   "(PMTUD blackhole) — sessão 'abre e dá timeout', exatamente o "
+                   "sintoma visto na primeira tentativa de virada. No PAN-OS o "
+                   "valor é um AJUSTE (desconto do MTU); no FG é absoluto — coluna "
+                   "tcp_mss_fg_sugerido = mtu - ajuste - 40." % len(itens)),
+        "itens": itens,
+    }
+
+
 ALL_CHECKS = [
     check_a01_edl_rules, check_a02_geo_codes, check_a03_appid,
     check_a04_any_any_service, check_a05_userid, check_a06_no_log,
@@ -709,6 +738,7 @@ ALL_CHECKS = [
     check_a13_names, check_a14_ike, check_a15_mgmt, check_a16_certificates,
     check_a17_interfaces, check_a18_capacity, check_a19_zones,
     check_a20_nat_classes, check_a21_early_denies, check_a22_vpn_reconcile,
+    check_a23_tcp_mss,
 ]
 
 

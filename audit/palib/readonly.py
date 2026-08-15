@@ -61,7 +61,8 @@ def assert_read_only(params):
 
 # Prefixos de API FortiOS permitidos. cmdb via GET é leitura de configuração;
 # escrita em cmdb seria POST/PUT/DELETE — bloqueados pela checagem de método.
-FG_ALLOWED_PREFIXES = ("api/v2/monitor/", "api/v2/cmdb/")
+# api/v2/log/ é leitura de logs (event/system/ha/vpn) — necessária para o RCA.
+FG_ALLOWED_PREFIXES = ("api/v2/monitor/", "api/v2/cmdb/", "api/v2/log/")
 
 
 def assert_fg_read_only(method, path):

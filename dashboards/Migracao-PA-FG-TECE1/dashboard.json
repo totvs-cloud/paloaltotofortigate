@@ -370,7 +370,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA sessões ativas"
+                "value": "PA ${__field.labels.hostname}"
               }
             ]
           },
@@ -389,7 +389,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG sessões ativas"
+                "value": "FG ${__field.labels.hostname}"
               }
             ]
           }
@@ -476,7 +476,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA cps"
+                "value": "PA cps ${__field.labels.hostname}"
               }
             ]
           },
@@ -495,7 +495,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG setup rate"
+                "value": "FG setup ${__field.labels.hostname}"
               }
             ]
           }
@@ -533,7 +533,7 @@
       "id": 7,
       "type": "stat",
       "title": "IPsec ativos — PA (baseline 57)",
-      "description": "pa_capacity VPN_IPSEC_TUNNELS (show vpn flow). Baseline do Plano: 57 SAs UP. Fonte de verdade alternativa: mig_pa_baseline (painel ao lado).",
+      "description": "pa_capacity VPN_IPSEC_TUNNELS (show vpn flow) — hoje ~72 túneis em flow; o 57 do Plano refere-se a SAs UP (compare com o stat pa-baseline ao lado). Verde ≥57.",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"
@@ -547,7 +547,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_cap}\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"pa_capacity\" and r._field == \"current_usage\")\n  |> filter(fn: (r) => r.usage_type == \"VPN_IPSEC_TUNNELS\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> last()\n  |> max()\n",
+          "query": "from(bucket: \"${bucket_cap}\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"pa_capacity\" and r._field == \"current_usage\")\n  |> filter(fn: (r) => r.usage_type == \"VPN_IPSEC_TUNNELS\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> last()\n  |> group()\n  |> max()\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -713,7 +713,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -15m)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\")\n  |> filter(fn: (r) => r.phase1 =~ /^(VPN-TKS_GCP_Prod|VPN_TESP03_P1|VPN_TESP05_P1|VPN_TESP1_CLD|VPN_TESP1_TRD|VPN_TESP6|VPN_TESP7)$/)\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"phase1\", \"hostname\", \"vdom\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"phase1\", \"hostname\", \"vdom\", \"up\", \"p2_up\", \"p2_total\", \"incoming_bytes\", \"outgoing_bytes\"])\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -15m)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\")\n  |> filter(fn: (r) => r.phase1 =~ /^(VPN-TKS_GCP_Prod|VPN_TESP03_P1|VPN_TESP05_P1|VPN_TESP1_CLD|VPN_TESP1_TRD|VPN_TESP6|VPN_TESP7)$/)\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> last()\n  |> group()\n  |> pivot(rowKey: [\"phase1\", \"hostname\", \"vdom\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"phase1\", \"hostname\", \"vdom\", \"up\", \"p2_up\", \"p2_total\", \"incoming_bytes\", \"outgoing_bytes\"])\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -723,22 +723,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "1": {
-                  "text": "✅ UP",
-                  "color": "green"
-                },
-                "0": {
-                  "text": "❌ DOWN",
-                  "color": "red"
-                }
-              }
-            }
-          ]
+          "unit": "short"
         },
         "overrides": [
           {
@@ -752,6 +737,24 @@
                 "value": {
                   "type": "color-text"
                 }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "✅ UP",
+                        "color": "green"
+                      },
+                      "0": {
+                        "text": "❌ DOWN",
+                        "color": "red"
+                      }
+                    }
+                  }
+                ]
               }
             ]
           }
@@ -783,7 +786,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -15m)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\")\n  |> filter(fn: (r) => r.phase1 =~ /CBL3SH/)\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"phase1\", \"hostname\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"phase1\", \"hostname\", \"up\", \"p2_up\", \"p2_total\"])\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: -15m)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\")\n  |> filter(fn: (r) => r.phase1 =~ /CBL3SH/)\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> pivot(rowKey: [\"phase1\", \"hostname\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"phase1\", \"hostname\", \"up\", \"p2_up\", \"p2_total\"])\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -793,24 +796,42 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "1": {
-                  "text": "✅ UP",
-                  "color": "green"
-                },
-                "0": {
-                  "text": "❌ DOWN",
-                  "color": "red"
-                }
-              }
-            }
-          ]
+          "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "up"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "✅ UP",
+                        "color": "green"
+                      },
+                      "0": {
+                        "text": "❌ DOWN",
+                        "color": "red"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {}
     },
@@ -818,7 +839,7 @@
       "id": 12,
       "type": "table",
       "title": "Túneis FG DOWN agora",
-      "description": "Qualquer linha aqui durante a janela é ação imediata.",
+      "description": "Nomes dos túneis FG em DOWN. Pré-virada é esperado estar cheio (os peers ainda apontam para o PA); na janela esta tabela tem que ESVAZIAR.",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"
@@ -832,7 +853,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\" and r._field == \"up\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.vdom =~ /^${vdom:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> last()\n  |> filter(fn: (r) => r._value == 0)\n  |> keep(columns: [\"phase1\", \"hostname\", \"vdom\", \"_value\"])\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_vpn_tunnel\" and r._field == \"up\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.vdom =~ /^${vdom:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> last()\n  |> group()\n  |> filter(fn: (r) => r._value == 0)\n  |> keep(columns: [\"phase1\", \"hostname\", \"vdom\"])\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -915,7 +936,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA túneis"
+                "value": "PA ${__field.labels.hostname}"
               }
             ]
           },
@@ -934,7 +955,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG túneis UP"
+                "value": "FG túneis UP (soma dos clusters)"
               }
             ]
           }
@@ -971,8 +992,8 @@
     {
       "id": 15,
       "type": "timeseries",
-      "title": "Tráfego WAN — PA (ae1) × FG ($fg_wan)",
-      "description": "Saída (TX) da WAN. Ajuste $fg_wan quando souber o nome da interface WAN no FG.",
+      "title": "Tráfego WAN — PA (ae1.x, soma) × FG ($fg_wan) — Bytes/s",
+      "description": "Saída (TX). No PAN-OS o contador fica nas SUBinterfaces (ae1.x) — a ae1 'pai' quase não conta (por isso o painel antigo mostrava b/s). Mesma matemática do painel Interface Traffic do FirewallEdges (difference/elapsed). Ajuste $fg_wan para a WAN dos clusters quando souber o nome.",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"
@@ -986,7 +1007,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"interface_stats\" and r._field == \"obytes\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> filter(fn: (r) => r.interface == \"ae1\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> map(fn: (r) => ({r with _value: r._value * 8.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"interface_stats\" and r._field == \"obytes\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> filter(fn: (r) => r.interface =~ /^ae1\\./)\n  |> difference(nonNegative: true)\n  |> elapsed(unit: 1s)\n  |> map(fn: (r) => ({r with _value: if r.elapsed > 0 then float(v: r._value) / float(v: r.elapsed) else 0.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> group(columns: [\"hostname\", \"_time\"])\n  |> sum()\n  |> group(columns: [\"hostname\"])\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -995,7 +1016,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_interface_stats\" and r._field == \"tx_bytes\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.interface =~ /${fg_wan:regex}/)\n  |> derivative(unit: 1s, nonNegative: true)\n  |> map(fn: (r) => ({r with _value: r._value * 8.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_interface_stats\" and r._field == \"tx_bytes\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> filter(fn: (r) => r.interface =~ /${fg_wan:regex}/)\n  |> difference(nonNegative: true)\n  |> elapsed(unit: 1s)\n  |> map(fn: (r) => ({r with _value: if r.elapsed > 0 then float(v: r._value) / float(v: r.elapsed) else 0.0}))\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -1016,7 +1037,7 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "bps"
+          "unit": "Bps"
         },
         "overrides": [
           {
@@ -1034,7 +1055,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA ae1 out"
+                "value": "PA WAN ${__field.labels.hostname}"
               }
             ]
           },
@@ -1053,7 +1074,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG out"
+                "value": "FG ${__field.labels.hostname} ${__field.labels.interface}"
               }
             ]
           }
@@ -1141,7 +1162,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA CPU dp"
+                "value": "PA dp ${__field.labels.hostname}"
               }
             ]
           },
@@ -1160,7 +1181,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG CPU"
+                "value": "FG ${__field.labels.hostname}"
               }
             ]
           }
@@ -1185,7 +1206,7 @@
       "id": 17,
       "type": "timeseries",
       "title": "Memória — PA × FG",
-      "description": "",
+      "description": "PA usa system_resources.memory_percent (mesmo campo do FirewallEdges). Se o PA mostrar 0%, é o parse do 'show system resources' do coletor nesta versão de PAN-OS — conferir no FirewallEdges e abrir follow-up do palo-collector; não é defeito deste painel.",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"
@@ -1248,7 +1269,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA mem"
+                "value": "PA ${__field.labels.hostname}"
               }
             ]
           },
@@ -1267,7 +1288,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG mem"
+                "value": "FG ${__field.labels.hostname}"
               }
             ]
           }
@@ -1292,7 +1313,7 @@
       "id": 18,
       "type": "timeseries",
       "title": "Erros de interface — PA × FG",
-      "description": "Erro crescendo depois de mover VLAN = duplex/LACP/fibra. Séries em zero ficam achatadas no fundo.",
+      "description": "Novos erros por janela, SOMADOS por equipamento (todas as interfaces). Crescendo depois de mover VLAN = duplex/LACP/fibra.",
       "datasource": {
         "type": "influxdb",
         "uid": "efcqeppjazvgga"
@@ -1306,7 +1327,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"interface_stats\" and r._field == \"ierrors\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "query": "from(bucket: \"${bucket_pa}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"interface_stats\" and r._field == \"ierrors\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${pa_fw:regex}$/)\n  |> difference(nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> group(columns: [\"hostname\", \"_time\"])\n  |> sum()\n  |> group(columns: [\"hostname\"])\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -1315,7 +1336,7 @@
         },
         {
           "refId": "B",
-          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_interface_stats\" and r._field == \"rx_errors\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n",
+          "query": "from(bucket: \"${bucket_mig}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fg_interface_stats\" and r._field == \"rx_errors\")\n  |> filter(fn: (r) => r.site =~ /^${site:regex}$/ and r.hostname =~ /^${fg_fw:regex}$/)\n  |> difference(nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> group(columns: [\"hostname\", \"_time\"])\n  |> sum()\n  |> group(columns: [\"hostname\"])\n",
           "datasource": {
             "type": "influxdb",
             "uid": "efcqeppjazvgga"
@@ -1354,7 +1375,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA ierrors"
+                "value": "PA erros ${__field.labels.hostname}"
               }
             ]
           },
@@ -1373,7 +1394,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG rx_errors"
+                "value": "FG erros ${__field.labels.hostname}"
               }
             ]
           }
@@ -1452,7 +1473,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA packet buffer"
+                "value": "PA ${__field.labels.hostname}"
               }
             ]
           }
@@ -1553,7 +1574,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA rotas"
+                "value": "PA ${__field.labels.hostname}"
               }
             ]
           },
@@ -1572,7 +1593,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG rotas estáticas"
+                "value": "FG estáticas (soma dos clusters)"
               }
             ]
           }
@@ -1660,7 +1681,7 @@
               },
               {
                 "id": "displayName",
-                "value": "PA ARP"
+                "value": "PA ${__field.labels.hostname}"
               }
             ]
           },
@@ -1679,7 +1700,7 @@
               },
               {
                 "id": "displayName",
-                "value": "FG ARP"
+                "value": "FG ARP (soma dos clusters)"
               }
             ]
           }
